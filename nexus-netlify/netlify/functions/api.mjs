@@ -10,31 +10,31 @@ import Stripe            from 'stripe'
 import { execSync }      from 'child_process'
 
 // ── Database URL ───────────────────────────────────────────────
-// Netlify DB injects NETLIFY_DATABASE_URL automatically
-// Fall back to DATABASE_URL if set manually
+// Netlify DB injects NETLIFY_DATABASE_URL automatically.
+// Prisma reads DATABASE_URL, so we map it here.
 const DB_URL = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL
-if (!process.env.DATABASE_URL && DB_URL) process.env.DATABASE_URL = DB_URL
+if (DB_URL) process.env.DATABASE_URL = DB_URL
 
-// ── Run migrations + seed once per cold start ─────────────────
-// This runs prisma migrate deploy and seeds on the FIRST invocation.
-// It is idempotent — safe to run on every cold start.
+// ── Bootstrap: create tables + seed on first cold start ───────
+// Uses `prisma db push` — no migration files needed.
+// Idempotent: safe to run every cold start, only creates
+// tables that don't exist yet.
 let _bootstrapped = false
 async function bootstrap(prisma) {
   if (_bootstrapped) return
   _bootstrapped = true
   try {
-    console.log('Running prisma migrate deploy...')
-    execSync('npx prisma migrate deploy', {
-      env: { ...process.env },
-      stdio: 'inherit',
+    console.log('[bootstrap] Running prisma db push...')
+    execSync('npx prisma db push --accept-data-loss --skip-generate', {
+      env: { ...process.env, DATABASE_URL: process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL },
+      stdio: 'pipe',
       timeout: 60000,
     })
-    console.log('Migrations done.')
+    console.log('[bootstrap] Tables ready.')
     await seedDatabase(prisma)
   } catch (e) {
-    // Don't crash the function — log and continue
-    console.error('Bootstrap error (non-fatal):', e.message)
-    _bootstrapped = false // retry on next cold start if failed
+    console.error('[bootstrap] Error:', e.message || e)
+    _bootstrapped = false
   }
 }
 

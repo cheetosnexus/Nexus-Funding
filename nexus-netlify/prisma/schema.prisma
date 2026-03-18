@@ -49,6 +49,7 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([token])
   @@index([userId])
 }
@@ -76,6 +77,7 @@ model ChallengeTemplate {
   updatedAt        DateTime @updatedAt
 
   tradingAccounts TradingAccount[]
+
   @@index([isActive])
 }
 
@@ -118,24 +120,24 @@ model TradingAccount {
 }
 
 model Order {
-  id          String      @id @default(cuid())
+  id          String       @id @default(cuid())
   accountId   String
   userId      String
   symbol      String
   type        OrderType
-  status      OrderStatus @default(OPEN)
+  status      OrderStatus  @default(OPEN)
   lots        Float
   openPrice   Float
   closePrice  Float?
   stopLoss    Float?
   takeProfit  Float?
-  commission  Float       @default(0)
-  swap        Float       @default(0)
+  commission  Float        @default(0)
+  swap        Float        @default(0)
   profit      Float?
-  openedAt    DateTime    @default(now())
+  openedAt    DateTime     @default(now())
   closedAt    DateTime?
   closeReason CloseReason?
-  flagged     Boolean     @default(false)
+  flagged     Boolean      @default(false)
   flagReason  String?
 
   account TradingAccount @relation(fields: [accountId], references: [id])
@@ -154,7 +156,9 @@ model RuleBreach {
   limit       Float
   description String
   occurredAt  DateTime  @default(now())
-  account     TradingAccount @relation(fields: [accountId], references: [id])
+
+  account TradingAccount @relation(fields: [accountId], references: [id])
+
   @@index([accountId])
 }
 
@@ -174,8 +178,10 @@ model Payout {
   requestedAt   DateTime     @default(now())
   processedAt   DateTime?
   processedBy   String?
-  user          User           @relation(fields: [userId], references: [id])
-  account       TradingAccount @relation(fields: [accountId], references: [id])
+
+  user    User           @relation(fields: [userId], references: [id])
+  account TradingAccount @relation(fields: [accountId], references: [id])
+
   @@index([userId])
   @@index([status])
 }
@@ -188,8 +194,10 @@ model AffiliateRef {
   earned        Float    @default(0)
   paid          Boolean  @default(false)
   createdAt     DateTime @default(now())
-  referrer      User @relation("Referrer", fields: [referrerId], references: [id])
-  referred      User @relation("Referred", fields: [referredId], references: [id])
+
+  referrer User @relation("Referrer", fields: [referrerId], references: [id])
+  referred User @relation("Referred", fields: [referredId], references: [id])
+
   @@index([referrerId])
 }
 
@@ -202,7 +210,9 @@ model Notification {
   read      Boolean          @default(false)
   metadata  Json?
   createdAt DateTime         @default(now())
-  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, read])
 }
 
@@ -216,7 +226,9 @@ model KycDocument {
   submittedAt DateTime  @default(now())
   reviewedAt  DateTime?
   reviewedBy  String?
-  user        User @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
+
   @@index([userId])
 }
 
@@ -230,6 +242,7 @@ model AuditLog {
   after      Json?
   ipAddress  String?
   createdAt  DateTime @default(now())
+
   @@index([createdAt])
 }
 
@@ -239,16 +252,92 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 }
 
-enum Role             { USER ADMIN SUPER_ADMIN }
-enum UserStatus       { PENDING ACTIVE SUSPENDED BANNED }
-enum AccountPhase     { CHALLENGE_1 CHALLENGE_2 FUNDED }
-enum AccountStatus    { ACTIVE PASSED FAILED SUSPENDED }
-enum PaymentStatus    { PENDING PAID FAILED REFUNDED }
-enum OrderType        { BUY SELL }
-enum OrderStatus      { OPEN CLOSED CANCELLED }
-enum CloseReason      { MANUAL STOP_LOSS TAKE_PROFIT MARGIN_CALL ADMIN }
-enum PayoutStatus     { PENDING APPROVED REJECTED PROCESSING COMPLETED }
-enum RuleType         { DAILY_LOSS TOTAL_DRAWDOWN PROFIT_TARGET MIN_TRADING_DAYS MAX_TRADING_DAYS }
-enum NotificationType { SYSTEM TRADE PAYOUT CHALLENGE PROMO }
-enum KycType          { PASSPORT NATIONAL_ID DRIVERS_LICENSE PROOF_OF_ADDRESS SELFIE }
-enum KycStatus        { PENDING APPROVED REJECTED }
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum AccountPhase {
+  CHALLENGE_1
+  CHALLENGE_2
+  FUNDED
+}
+
+enum AccountStatus {
+  ACTIVE
+  PASSED
+  FAILED
+  SUSPENDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum OrderType {
+  BUY
+  SELL
+}
+
+enum OrderStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum CloseReason {
+  MANUAL
+  STOP_LOSS
+  TAKE_PROFIT
+  MARGIN_CALL
+  ADMIN
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSING
+  COMPLETED
+}
+
+enum RuleType {
+  DAILY_LOSS
+  TOTAL_DRAWDOWN
+  PROFIT_TARGET
+  MIN_TRADING_DAYS
+  MAX_TRADING_DAYS
+}
+
+enum NotificationType {
+  SYSTEM
+  TRADE
+  PAYOUT
+  CHALLENGE
+  PROMO
+}
+
+enum KycType {
+  PASSPORT
+  NATIONAL_ID
+  DRIVERS_LICENSE
+  PROOF_OF_ADDRESS
+  SELFIE
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

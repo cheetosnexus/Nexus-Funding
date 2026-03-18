@@ -1,0 +1,254 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  phone               String?
+  country             String?
+  role                Role       @default(USER)
+  status              UserStatus @default(PENDING)
+  emailVerified       Boolean    @default(false)
+  emailVerifyToken    String?
+  emailVerifyExpiry   DateTime?
+  passwordResetToken  String?
+  passwordResetExpiry DateTime?
+  affiliateCode       String?    @unique
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  tradingAccounts TradingAccount[]
+  orders          Order[]
+  payouts         Payout[]
+  notifications   Notification[]
+  sessions        Session[]
+  kycDocuments    KycDocument[]
+  affiliateRefs   AffiliateRef[] @relation("Referrer")
+  referredBy      AffiliateRef?  @relation("Referred")
+
+  @@index([email])
+  @@index([affiliateCode])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([token])
+  @@index([userId])
+}
+
+model ChallengeTemplate {
+  id               String   @id @default(cuid())
+  name             String
+  accountSize      Float
+  price            Float
+  currency         String   @default("USD")
+  phase            Int      @default(2)
+  profitTarget1    Float
+  profitTarget2    Float?
+  maxDailyLoss     Float
+  maxTotalDrawdown Float
+  minTradingDays   Int
+  maxTradingDays   Int?
+  profitSplit      Float    @default(80)
+  leverage         Int      @default(100)
+  instruments      String[]
+  isActive         Boolean  @default(true)
+  isPopular        Boolean  @default(false)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tradingAccounts TradingAccount[]
+  @@index([isActive])
+}
+
+model TradingAccount {
+  id                  String        @id @default(cuid())
+  userId              String
+  challengeTemplateId String
+  accountNumber       String        @unique
+  phase               AccountPhase  @default(CHALLENGE_1)
+  status              AccountStatus @default(ACTIVE)
+  balance             Float
+  equity              Float
+  startBalance        Float
+  peakBalance         Float
+  dailyStartBalance   Float
+  dailyLoss           Float         @default(0)
+  totalProfit         Float         @default(0)
+  tradingDays         Int           @default(0)
+  lastTradingDay      DateTime?
+  failReason          String?
+  stripePaymentId     String?
+  stripeSessionId     String?
+  paymentStatus       PaymentStatus @default(PENDING)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  resetCount          Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id])
+  challenge    ChallengeTemplate @relation(fields: [challengeTemplateId], references: [id])
+  orders       Order[]
+  payouts      Payout[]
+  ruleBreaches RuleBreach[]
+
+  @@index([userId])
+  @@index([accountNumber])
+  @@index([status])
+  @@index([phase])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  accountId   String
+  userId      String
+  symbol      String
+  type        OrderType
+  status      OrderStatus @default(OPEN)
+  lots        Float
+  openPrice   Float
+  closePrice  Float?
+  stopLoss    Float?
+  takeProfit  Float?
+  commission  Float       @default(0)
+  swap        Float       @default(0)
+  profit      Float?
+  openedAt    DateTime    @default(now())
+  closedAt    DateTime?
+  closeReason CloseReason?
+  flagged     Boolean     @default(false)
+  flagReason  String?
+
+  account TradingAccount @relation(fields: [accountId], references: [id])
+  user    User           @relation(fields: [userId], references: [id])
+
+  @@index([accountId, status])
+  @@index([userId])
+  @@index([openedAt])
+}
+
+model RuleBreach {
+  id          String    @id @default(cuid())
+  accountId   String
+  ruleType    RuleType
+  value       Float
+  limit       Float
+  description String
+  occurredAt  DateTime  @default(now())
+  account     TradingAccount @relation(fields: [accountId], references: [id])
+  @@index([accountId])
+}
+
+model Payout {
+  id            String       @id @default(cuid())
+  userId        String
+  accountId     String
+  amount        Float
+  grossAmount   Float
+  firmShare     Float
+  splitRatio    Float
+  status        PayoutStatus @default(PENDING)
+  method        String
+  walletAddress String?
+  bankDetails   Json?
+  adminNote     String?
+  requestedAt   DateTime     @default(now())
+  processedAt   DateTime?
+  processedBy   String?
+  user          User           @relation(fields: [userId], references: [id])
+  account       TradingAccount @relation(fields: [accountId], references: [id])
+  @@index([userId])
+  @@index([status])
+}
+
+model AffiliateRef {
+  id            String   @id @default(cuid())
+  referrerId    String
+  referredId    String   @unique
+  commissionPct Float    @default(10)
+  earned        Float    @default(0)
+  paid          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  referrer      User @relation("Referrer", fields: [referrerId], references: [id])
+  referred      User @relation("Referred", fields: [referredId], references: [id])
+  @@index([referrerId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, read])
+}
+
+model KycDocument {
+  id          String    @id @default(cuid())
+  userId      String
+  type        KycType
+  fileUrl     String
+  status      KycStatus @default(PENDING)
+  reviewNote  String?
+  submittedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  user        User @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+enum Role             { USER ADMIN SUPER_ADMIN }
+enum UserStatus       { PENDING ACTIVE SUSPENDED BANNED }
+enum AccountPhase     { CHALLENGE_1 CHALLENGE_2 FUNDED }
+enum AccountStatus    { ACTIVE PASSED FAILED SUSPENDED }
+enum PaymentStatus    { PENDING PAID FAILED REFUNDED }
+enum OrderType        { BUY SELL }
+enum OrderStatus      { OPEN CLOSED CANCELLED }
+enum CloseReason      { MANUAL STOP_LOSS TAKE_PROFIT MARGIN_CALL ADMIN }
+enum PayoutStatus     { PENDING APPROVED REJECTED PROCESSING COMPLETED }
+enum RuleType         { DAILY_LOSS TOTAL_DRAWDOWN PROFIT_TARGET MIN_TRADING_DAYS MAX_TRADING_DAYS }
+enum NotificationType { SYSTEM TRADE PAYOUT CHALLENGE PROMO }
+enum KycType          { PASSPORT NATIONAL_ID DRIVERS_LICENSE PROOF_OF_ADDRESS SELFIE }
+enum KycStatus        { PENDING APPROVED REJECTED }

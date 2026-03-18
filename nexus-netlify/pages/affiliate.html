@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Affiliate — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-wrap" id="main-wrap">
+    <div class="topbar" id="topbar"></div>
+    <div class="page-content">
+      <div class="mb-20 fade-up">
+        <h1 class="page-title">Affiliate Program</h1>
+        <p class="text-muted" style="font-size:14px;margin-top:4px">Earn commission on every challenge purchased by traders you refer.</p>
+      </div>
+      <div class="grid-3 stagger mb-20" id="aff-stats">
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+      </div>
+      <div class="card-lg p-24 mb-20" id="aff-link-card">
+        <div class="skeleton" style="height:60px;border-radius:8px"></div>
+      </div>
+      <div class="card" id="aff-refs" style="overflow:hidden">
+        <div class="skeleton" style="height:200px;border-radius:0"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+initPage('/pages/affiliate.html', { onReady: loadAffiliate });
+
+async function loadAffiliate() {
+  try {
+    const d = await Api.get('/affiliate/stats');
+    document.getElementById('aff-stats').innerHTML = `
+      <div class="stat-card fade-up"><div class="stat-label">Total Referrals</div><div class="stat-value mono" style="color:var(--cyan)">${d.totalReferrals||0}</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Total Earned</div><div class="stat-value mono" style="color:var(--green)">${Fmt.money(d.totalEarned||0)}</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Commission Rate</div><div class="stat-value mono" style="color:var(--gold)">${d.commissionPct||10}%</div></div>
+    `;
+    document.getElementById('aff-link-card').innerHTML = `
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px">Your Referral Link</div>
+      <div class="flex gap-10">
+        <input class="input mono" style="font-size:12px" readonly value="${d.referralLink||''}" onclick="this.select()" />
+        <button class="btn btn-secondary" onclick="copyLink('${d.referralLink||''}')">Copy</button>
+      </div>
+      <div class="text-faint" style="font-size:12px;margin-top:8px">Share this link. When someone buys a challenge through it, you earn ${d.commissionPct||10}% automatically.</div>
+    `;
+    if (!d.refs?.length) {
+      document.getElementById('aff-refs').innerHTML = `<div class="empty-state"><div class="empty-icon">🔗</div><div class="empty-title">No Referrals Yet</div><div class="empty-desc">Share your referral link to start earning commissions.</div></div>`;
+      return;
+    }
+    document.getElementById('aff-refs').innerHTML = `
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Referred Traders (${d.totalReferrals})</div>
+      <table class="data-table"><thead><tr><th>Trader</th><th>Status</th><th>Commission</th><th>Paid</th><th>Date</th></tr></thead>
+      <tbody>${d.refs.map(r => `<tr>
+        <td style="font-weight:500;color:var(--fg);font-size:13px">${r.name}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td class="mono pnl-pos" style="font-size:13px">${Fmt.money(r.earned)}</td>
+        <td style="font-size:13px">${r.paid?'<span style="color:var(--green)">✓ Paid</span>':'<span class="text-faint">Pending</span>'}</td>
+        <td class="text-faint" style="font-size:12px">${Fmt.date(r.date)}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (err) {
+    document.getElementById('aff-refs').innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load affiliate data</div>`;
+  }
+}
+
+function copyLink(url) {
+  navigator.clipboard.writeText(url).then(() => Toast.success('Referral link copied!'));
+}
+</script>
+</body>
+</html>

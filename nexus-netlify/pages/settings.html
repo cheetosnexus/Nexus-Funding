@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-wrap" id="main-wrap">
+    <div class="topbar" id="topbar"></div>
+    <div class="page-content">
+      <h1 class="page-title mb-20 fade-up">Settings</h1>
+      <div style="max-width:640px">
+        <!-- Tabs -->
+        <div class="tab-bar" id="settings-tabs">
+          <button class="tab-btn active" onclick="showTab('profile')">Profile</button>
+          <button class="tab-btn" onclick="showTab('password')">Password</button>
+          <button class="tab-btn" onclick="showTab('kyc')">KYC Documents</button>
+        </div>
+
+        <!-- Profile tab -->
+        <div id="tab-profile" class="card-lg p-28 fade-up">
+          <div class="grid-2 mb-14">
+            <div><label class="label">First Name</label><input class="input" id="firstName" /></div>
+            <div><label class="label">Last Name</label><input class="input" id="lastName" /></div>
+          </div>
+          <div class="mb-14"><label class="label">Phone</label><input class="input" id="phone" placeholder="Optional" /></div>
+          <div class="mb-20"><label class="label">Country</label><input class="input" id="country" /></div>
+          <div class="alert alert-info mb-20" id="account-info" style="font-size:13px;line-height:2"></div>
+          <button class="btn btn-primary btn-lg btn-block" onclick="saveProfile()">Save Profile</button>
+        </div>
+
+        <!-- Password tab -->
+        <div id="tab-password" class="card-lg p-28 hidden fade-up">
+          <div class="mb-14"><label class="label">Current Password</label><input class="input" type="password" id="currentPw" /></div>
+          <div class="mb-14"><label class="label">New Password</label><input class="input" type="password" id="newPw" /></div>
+          <div class="mb-14"><label class="label">Confirm New Password</label><input class="input" type="password" id="confirmPw" /></div>
+          <div class="alert alert-info mb-20" style="font-size:13px">Password requirements: 8+ characters, one uppercase letter, one number. Changing will sign you out of all sessions.</div>
+          <button class="btn btn-primary btn-lg btn-block" onclick="changePassword()">Change Password</button>
+        </div>
+
+        <!-- KYC tab -->
+        <div id="tab-kyc" class="hidden fade-up">
+          <div class="card-lg p-24 mb-16">
+            <div style="font-size:14px;font-weight:600;margin-bottom:14px">Submit KYC Document</div>
+            <div class="mb-12"><label class="label">Document Type</label>
+              <select class="input" id="kyc-type">
+                <option value="PASSPORT">Passport</option>
+                <option value="NATIONAL_ID">National ID</option>
+                <option value="DRIVERS_LICENSE">Driver's License</option>
+                <option value="PROOF_OF_ADDRESS">Proof of Address</option>
+                <option value="SELFIE">Selfie with ID</option>
+              </select>
+            </div>
+            <div class="mb-14"><label class="label">Document URL (upload to S3/Cloudinary first)</label>
+              <input class="input" id="kyc-url" placeholder="https://your-storage.com/document.jpg" />
+              <div class="text-faint" style="font-size:11px;margin-top:5px">Upload your document to cloud storage, paste the URL here.</div>
+            </div>
+            <button class="btn btn-primary btn-block" onclick="submitKyc()">Submit Document</button>
+          </div>
+          <div class="card" id="kyc-docs" style="overflow:hidden"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+initPage('/pages/settings.html', { onReady: loadSettings });
+
+function showTab(name) {
+  ['profile','password','kyc'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
+  });
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['profile','password','kyc'][i] === name);
+  });
+  if (name === 'kyc') loadKycDocs();
+}
+
+async function loadSettings() {
+  const user = Auth.user();
+  document.getElementById('firstName').value = user.firstName || '';
+  document.getElementById('lastName').value  = user.lastName  || '';
+  document.getElementById('phone').value     = user.phone     || '';
+  document.getElementById('country').value   = user.country   || '';
+  document.getElementById('account-info').innerHTML =
+    `Email: <strong style="color:var(--fg)">${user.email}</strong><br>
+     Role: ${statusBadge(user.role)}<br>
+     Affiliate Code: <span class="mono" style="color:var(--cyan)">${user.affiliateCode || '—'}</span>`;
+}
+
+async function saveProfile() {
+  try {
+    const data = await Api.patch('/user/profile', {
+      firstName: document.getElementById('firstName').value.trim(),
+      lastName:  document.getElementById('lastName').value.trim(),
+      phone:     document.getElementById('phone').value.trim(),
+      country:   document.getElementById('country').value.trim(),
+    });
+    // Update local auth store
+    const auth = Auth.get();
+    if (auth.user) { auth.user.firstName = data.firstName; auth.user.lastName = data.lastName; localStorage.setItem('nexus_auth', JSON.stringify(auth)); }
+    Toast.success('Profile updated');
+  } catch (err) { Toast.error(err.message || 'Update failed'); }
+}
+
+async function changePassword() {
+  const current = document.getElementById('currentPw').value;
+  const newPw   = document.getElementById('newPw').value;
+  const confirm = document.getElementById('confirmPw').value;
+  if (newPw !== confirm) { Toast.error("Passwords don't match"); return; }
+  if (newPw.length < 8 || !/[A-Z]/.test(newPw) || !/[0-9]/.test(newPw)) { Toast.error('Password must be 8+ chars with uppercase and number'); return; }
+  try {
+    await Api.post('/user/change-password', { currentPassword: current, newPassword: newPw });
+    Toast.success('Password changed. Signing out...');
+    setTimeout(() => { Auth.logout(); window.location.href = 'login.html'; }, 1500);
+  } catch (err) { Toast.error(err.message || 'Failed'); }
+}
+
+async function submitKyc() {
+  const fileUrl = document.getElementById('kyc-url').value.trim();
+  const type    = document.getElementById('kyc-type').value;
+  if (!fileUrl) { Toast.error('Please enter a document URL'); return; }
+  try {
+    await Api.post('/user/kyc', { type, fileUrl });
+    Toast.success('Document submitted for review');
+    document.getElementById('kyc-url').value = '';
+    loadKycDocs();
+  } catch (err) { Toast.error(err.message || 'Submission failed'); }
+}
+
+async function loadKycDocs() {
+  const wrap = document.getElementById('kyc-docs');
+  try {
+    const docs = await Api.get('/user/kyc');
+    if (!docs.length) { wrap.innerHTML = '<div class="empty-state" style="padding:28px"><div class="empty-icon" style="font-size:28px">📄</div><div class="empty-title" style="font-size:15px">No Documents Yet</div></div>'; return; }
+    wrap.innerHTML = `<table class="data-table"><thead><tr><th>Type</th><th>Submitted</th><th>Status</th><th>Note</th></tr></thead><tbody>${docs.map(d=>`<tr><td style="font-size:13px">${d.type.replace(/_/g,' ')}</td><td class="text-faint" style="font-size:12px">${Fmt.date(d.submittedAt)}</td><td>${statusBadge(d.status)}</td><td class="text-faint" style="font-size:12px">${d.reviewNote||'—'}</td></tr>`).join('')}</tbody></table>`;
+  } catch { wrap.innerHTML = '<div class="alert alert-error m-16">Failed to load</div>'; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trading Terminal — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .page-content { padding: 14px; overflow: hidden; }
+    .terminal-wrap { display: grid; grid-template-columns: 1fr 260px; gap: 10px; height: calc(100vh - 90px); }
+    .chart-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; overflow: hidden; }
+    .order-col { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+    #tv-chart { flex: 1; border-radius: var(--r); overflow: hidden; }
+    .positions-card { max-height: 200px; overflow: auto; }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-wrap" id="main-wrap">
+    <div class="topbar" id="topbar"></div>
+    <div class="page-content">
+
+      <!-- Symbol strip + account selector -->
+      <div class="flex mb-10" style="gap:6px;flex-wrap:wrap;align-items:center">
+        <div class="symbol-strip" id="symbol-strip"></div>
+        <div style="margin-left:auto">
+          <select class="input" id="account-select" style="width:220px;height:36px;font-size:13px">
+            <option value="">Select account</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Main terminal grid -->
+      <div class="terminal-wrap">
+        <!-- Left column -->
+        <div class="chart-col">
+          <!-- Price header -->
+          <div class="card price-header">
+            <div>
+              <div style="font-size:10px;color:var(--fg3);margin-bottom:1px">BID</div>
+              <div class="price-bid" id="bid-price">—</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--fg3);margin-bottom:1px">ASK</div>
+              <div class="price-ask" id="ask-price">—</div>
+            </div>
+            <div style="font-size:12px;color:var(--fg3)" id="spread-label"></div>
+            <div class="price-symbol" id="active-symbol">EURUSD</div>
+          </div>
+
+          <!-- TradingView chart -->
+          <div class="card" id="tv-chart"></div>
+
+          <!-- Open positions -->
+          <div class="card positions-card">
+            <div class="flex-between" style="padding:10px 14px;border-bottom:1px solid var(--border)">
+              <span style="font-size:12px;font-weight:600">Open Positions (<span id="pos-count">0</span>)</span>
+              <span class="text-faint" style="font-size:11px" id="pos-refresh-lbl"></span>
+            </div>
+            <div id="positions-body">
+              <div class="empty-state" style="padding:20px">
+                <div style="font-size:13px;color:var(--fg3)">No open positions</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right column: order form + stats -->
+        <div class="order-col">
+          <!-- Order form -->
+          <div class="card p-16">
+            <div class="label" style="margin-bottom:10px" id="order-form-title">PLACE ORDER · EURUSD</div>
+            <div class="side-toggle">
+              <button class="side-btn buy" id="buy-btn" onclick="setSide('BUY')">BUY</button>
+              <button class="side-btn sell inactive" id="sell-btn" onclick="setSide('SELL')">SELL</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div>
+                <label class="label">Lot Size</label>
+                <input class="input mono" type="number" id="lots-input" value="0.01" min="0.01" max="50" step="0.01" />
+                <div class="lot-chips" id="lot-chips">
+                  <span class="lot-chip active" onclick="setLot('0.01')">0.01</span>
+                  <span class="lot-chip" onclick="setLot('0.05')">0.05</span>
+                  <span class="lot-chip" onclick="setLot('0.10')">0.10</span>
+                  <span class="lot-chip" onclick="setLot('0.50')">0.50</span>
+                  <span class="lot-chip" onclick="setLot('1.00')">1.00</span>
+                </div>
+              </div>
+              <div>
+                <label class="label" style="color:rgba(255,61,107,.8)">Stop Loss (optional)</label>
+                <input class="input mono" type="number" id="sl-input" placeholder="0.00000" step="0.00001" />
+              </div>
+              <div>
+                <label class="label" style="color:rgba(0,230,118,.8)">Take Profit (optional)</label>
+                <input class="input mono" type="number" id="tp-input" placeholder="0.00000" step="0.00001" />
+              </div>
+              <button class="btn btn-lg btn-block" id="place-btn" onclick="placeOrder()">BUY EURUSD</button>
+              <div id="no-acct-warn" class="text-center text-faint" style="font-size:11px;display:none">Select an account above</div>
+            </div>
+          </div>
+
+          <!-- Account rules -->
+          <div class="card p-16" id="rules-panel">
+            <div class="label mb-12">ACCOUNT RULES</div>
+            <div class="text-faint text-center" style="font-size:13px;padding:10px 0">Select an account to see rules</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="https://s3.tradingview.com/tv.js" async></script>
+<script src="/js/core.js"></script>
+<script>
+const SYMBOLS = [
+  'EURUSD','GBPUSD','USDJPY','USDCHF','AUDUSD','USDCAD','NZDUSD',
+  'BTCUSD','ETHUSD','XAUUSD','XAGUSD','US30','US500','US100','USOIL'
+];
+
+let activeSym = 'EURUSD';
+let activeSide = 'BUY';
+let activeAccountId = '';
+let tvWidget = null;
+let refreshInterval = null;
+
+initPage('/pages/trading.html', { onReady: initTrading });
+
+function initTrading() {
+  // Get account from URL param
+  const params = new URLSearchParams(location.search);
+  const presetAccount = params.get('account');
+
+  // Build symbol strip
+  buildSymbolStrip();
+
+  // Load accounts
+  loadAccounts(presetAccount);
+
+  // Subscribe to all symbols
+  PriceFeed.subscribe(SYMBOLS);
+
+  // Listen to all price updates
+  PriceFeed.on('*', onPriceTick);
+
+  // Account selector change
+  document.getElementById('account-select').addEventListener('change', function() {
+    activeAccountId = this.value;
+    if (activeAccountId) {
+      loadRules();
+      PriceFeed.subscribeAccount(activeAccountId);
+    }
+    document.getElementById('no-acct-warn').style.display = activeAccountId ? 'none' : 'block';
+  });
+
+  // Load TradingView
+  initChart();
+
+  // Refresh positions every 3s
+  refreshInterval = setInterval(loadPositions, 3000);
+}
+
+function buildSymbolStrip() {
+  const strip = document.getElementById('symbol-strip');
+  strip.innerHTML = SYMBOLS.slice(0, 10).map(s =>
+    `<div class="sym-chip ${s===activeSym?'active':''}" id="chip-${s}" onclick="selectSymbol('${s}')">
+      <span style="font-weight:600">${s}</span>
+      <span class="sym-price mono" id="price-${s}">—</span>
+    </div>`
+  ).join('');
+}
+
+function onPriceTick(tick) {
+  const el = document.getElementById(`price-${tick.symbol}`);
+  if (el) el.textContent = Fmt.price(tick.bid, tick.symbol);
+
+  if (tick.symbol === activeSym) {
+    const dp = tick.symbol.includes('JPY') ? 3 : ['BTCUSD','US30','US500','US100','XAUUSD','USOIL'].includes(tick.symbol) ? 2 : 5;
+    document.getElementById('bid-price').textContent = tick.bid.toFixed(dp);
+    document.getElementById('ask-price').textContent = tick.ask.toFixed(dp);
+    const spread = ((tick.ask - tick.bid) * (tick.symbol.includes('JPY') ? 100 : 10000)).toFixed(1);
+    document.getElementById('spread-label').textContent = `SPREAD: ${spread} pips`;
+  }
+}
+
+function selectSymbol(sym) {
+  document.querySelectorAll('.sym-chip').forEach(c => c.classList.remove('active'));
+  const chip = document.getElementById(`chip-${sym}`);
+  if (chip) chip.classList.add('active');
+  activeSym = sym;
+  document.getElementById('active-symbol').textContent = sym;
+  document.getElementById('order-form-title').textContent = `PLACE ORDER · ${sym}`;
+  document.getElementById('place-btn').textContent = `${activeSide} ${sym}`;
+  if (tvWidget) { try { tvWidget.activeChart().setSymbol(sym); } catch {} }
+}
+
+function setSide(side) {
+  activeSide = side;
+  const buy  = document.getElementById('buy-btn');
+  const sell = document.getElementById('sell-btn');
+  buy.className  = `side-btn buy  ${side==='BUY'  ? '' : 'inactive'}`;
+  sell.className = `side-btn sell ${side==='SELL' ? '' : 'inactive'}`;
+  const btn = document.getElementById('place-btn');
+  btn.style.background = side === 'BUY'
+    ? 'linear-gradient(135deg,#00c853,#00e676)'
+    : 'linear-gradient(135deg,#c62828,#ff1744)';
+  btn.textContent = `${side} ${activeSym}`;
+}
+
+function setLot(v) {
+  document.getElementById('lots-input').value = v;
+  document.querySelectorAll('.lot-chip').forEach(c => c.classList.toggle('active', c.textContent === v));
+}
+
+async function placeOrder() {
+  if (!activeAccountId) { Toast.error('Select a trading account first'); return; }
+  const lots = parseFloat(document.getElementById('lots-input').value);
+  if (!lots || lots <= 0) { Toast.error('Invalid lot size'); return; }
+  const sl = document.getElementById('sl-input').value;
+  const tp = document.getElementById('tp-input').value;
+  const btn = document.getElementById('place-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:16px;height:16px"></span> Placing...';
+  try {
+    const order = await Api.post('/trading/order', {
+      accountId: activeAccountId, symbol: activeSym,
+      type: activeSide, lots,
+      stopLoss:   sl ? parseFloat(sl) : undefined,
+      takeProfit: tp ? parseFloat(tp) : undefined,
+    });
+    Toast.success(`${order.type} ${order.symbol} opened at ${Fmt.price(order.openPrice, order.symbol)}`);
+    loadPositions();
+    loadRules();
+  } catch (err) {
+    Toast.error(err.message || 'Order failed');
+  } finally {
+    btn.disabled = false;
+    setSide(activeSide);
+  }
+}
+
+async function closeOrder(orderId) {
+  try {
+    const res = await Api.post(`/trading/order/${orderId}/close`);
+    const p = res.profit || 0;
+    Toast.success(`Closed: ${p >= 0 ? '+' : ''}${Fmt.money(p)}`);
+    loadPositions();
+    loadRules();
+  } catch (err) { Toast.error(err.message || 'Close failed'); }
+}
+
+async function loadAccounts(presetId) {
+  try {
+    const accounts = await Api.get('/accounts?status=ACTIVE');
+    const sel = document.getElementById('account-select');
+    sel.innerHTML = '<option value="">Select account</option>' +
+      accounts.map(a => `<option value="${a.id}">${'#'+a.accountNumber} — $${a.balance.toLocaleString('en-US',{maximumFractionDigits:0})}</option>`).join('');
+    if (presetId && accounts.find(a => a.id === presetId)) {
+      sel.value = presetId;
+      activeAccountId = presetId;
+      loadRules();
+      loadPositions();
+    }
+  } catch {}
+}
+
+async function loadPositions() {
+  if (!activeAccountId) return;
+  try {
+    const orders = await Api.get(`/trading/orders/open?accountId=${activeAccountId}`);
+    document.getElementById('pos-count').textContent = orders.length;
+    document.getElementById('pos-refresh-lbl').textContent = orders.length ? 'Live P&L · auto refresh' : '';
+
+    if (!orders.length) {
+      document.getElementById('positions-body').innerHTML = '<div style="padding:18px;text-align:center;color:var(--fg3);font-size:13px">No open positions</div>';
+      return;
+    }
+
+    const rows = orders.map(o => {
+      const cur  = PriceFeed.price(o.symbol)?.bid || o.openPrice;
+      const pips = o.type === 'BUY' ? (cur - o.openPrice) * 10000 : (o.openPrice - cur) * 10000;
+      const fpnl = parseFloat(((pips * 10 * o.lots) / 100 - o.commission).toFixed(2));
+      return `<tr>
+        <td class="mono" style="font-weight:600;color:var(--fg)">${o.symbol}</td>
+        <td>${statusBadge(o.type)}</td>
+        <td class="mono">${Fmt.lots(o.lots)}</td>
+        <td class="mono">${Fmt.price(o.openPrice,o.symbol)}</td>
+        <td class="mono">${Fmt.price(cur,o.symbol)}</td>
+        <td class="mono" style="color:${o.stopLoss?'var(--red)':'var(--fg3)'}">${o.stopLoss?Fmt.price(o.stopLoss,o.symbol):'—'}</td>
+        <td class="mono" style="color:${o.takeProfit?'var(--green)':'var(--fg3)'}">${o.takeProfit?Fmt.price(o.takeProfit,o.symbol):'—'}</td>
+        <td class="mono ${pnlClass(fpnl)}" style="font-weight:600">${pnlSign(fpnl)}${Fmt.money(fpnl)}</td>
+        <td><button onclick="closeOrder('${o.id}')" class="btn btn-danger btn-sm">Close</button></td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('positions-body').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Symbol</th><th>Side</th><th>Lots</th><th>Open</th><th>Cur</th><th>SL</th><th>TP</th><th>Float P&L</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch {}
+}
+
+async function loadRules() {
+  if (!activeAccountId) return;
+  try {
+    const { account, stats } = await Api.get(`/trading/stats/${activeAccountId}`);
+    const ch = account.challenge;
+    const rules = [
+      { label:'Profit Target',  val:`${stats.profitPct.toFixed(2)}%`, max:`${stats.profitTarget}%`, pct:stats.profitProgress, cls:'prog-cyan' },
+      { label:'Daily Drawdown', val:`${stats.dailyDrawdown.toFixed(2)}%`, max:`${stats.maxDailyLoss}%`, pct:(stats.dailyDrawdown/stats.maxDailyLoss)*100, cls:stats.dailyDrawdown>stats.maxDailyLoss*.6?'prog-red':'prog-gold' },
+      { label:'Total Drawdown', val:`${stats.drawdown.toFixed(2)}%`, max:`${stats.maxTotalDrawdown}%`, pct:(stats.drawdown/stats.maxTotalDrawdown)*100, cls:stats.drawdown>stats.maxTotalDrawdown*.6?'prog-red':'prog-gold' },
+    ];
+    const ruleHTML = rules.map(r => `
+      <div style="margin-bottom:12px">
+        <div class="flex-between" style="font-size:11px;margin-bottom:5px">
+          <span class="text-faint">${r.label}</span>
+          <span class="mono" style="font-weight:600;font-size:11px;color:${r.cls.includes('red')?'var(--red)':r.cls.includes('gold')?'var(--gold)':'var(--cyan)'}">${r.val} / ${r.max}</span>
+        </div>
+        <div class="progress"><div class="progress-fill ${r.cls}" style="width:${Math.min(r.pct,100)}%"></div></div>
+      </div>`).join('');
+
+    const statsHTML = [
+      { label:'Win Rate', val:`${stats.winRate.toFixed(1)}%`, color: stats.winRate>=50?'var(--green)':'var(--red)' },
+      { label:'Profit Factor', val:stats.profitFactor.toFixed(2), color:'var(--fg)' },
+      { label:'Total Trades', val:stats.totalTrades, color:'var(--fg)' },
+      { label:'Trading Days', val:account.tradingDays, color:'var(--cyan)' },
+    ].map(s => `
+      <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--fg3);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${s.label}</div>
+        <div class="mono" style="font-size:15px;font-weight:500;color:${s.color}">${s.val}</div>
+      </div>`).join('');
+
+    document.getElementById('rules-panel').innerHTML = `
+      <div class="label mb-12">ACCOUNT RULES</div>
+      ${ruleHTML}
+      <div class="grid-2" style="gap:8px;margin-top:4px">${statsHTML}</div>`;
+  } catch {}
+}
+
+function initChart() {
+  const el = document.getElementById('tv-chart');
+  const tryLoad = () => {
+    if (typeof TradingView === 'undefined') { setTimeout(tryLoad, 500); return; }
+    tvWidget = new TradingView.widget({
+      autosize: true, symbol: activeSym, interval: '5', timezone: 'Etc/UTC',
+      theme: 'dark', style: '1', locale: 'en',
+      toolbar_bg: '#090d1a', enable_publishing: false,
+      hide_top_toolbar: false, save_image: false, container_id: 'tv-chart',
+      backgroundColor: '#05080f', gridColor: 'rgba(255,255,255,0.03)',
+    });
+  };
+  tryLoad();
+}
+</script>
+</body>
+</html>

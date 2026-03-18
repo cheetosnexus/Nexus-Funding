@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-wrap" id="main-wrap">
+    <div class="topbar" id="topbar"></div>
+    <div class="page-content">
+
+      <!-- Header -->
+      <div class="mb-20 fade-up">
+        <h1 class="page-title" id="welcome-msg">Welcome back 👋</h1>
+        <p class="text-muted" style="font-size:13px" id="today-date"></p>
+      </div>
+
+      <!-- Stats row -->
+      <div class="grid-4 stagger mb-20" id="stats-grid">
+        <div class="skeleton" style="height:90px;border-radius:10px"></div>
+        <div class="skeleton" style="height:90px;border-radius:10px"></div>
+        <div class="skeleton" style="height:90px;border-radius:10px"></div>
+        <div class="skeleton" style="height:90px;border-radius:10px"></div>
+      </div>
+
+      <!-- Accounts -->
+      <div class="page-header mb-16">
+        <h2 class="section-title" style="margin:0">Trading Accounts</h2>
+        <a href="challenges.html" style="text-decoration:none"><button class="btn btn-secondary btn-sm">+ New Challenge</button></a>
+      </div>
+      <div id="accounts-grid" class="mb-24">
+        <div class="grid-auto-lg" id="accounts-loading">
+          <div class="skeleton" style="height:280px;border-radius:12px"></div>
+          <div class="skeleton" style="height:280px;border-radius:12px"></div>
+        </div>
+      </div>
+
+      <!-- Recent Trades -->
+      <div class="mb-8">
+        <h2 class="section-title">Recent Trades</h2>
+      </div>
+      <div id="trades-wrap" class="card" style="overflow:hidden">
+        <div class="skeleton" style="height:180px;border-radius:0"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+initPage('/pages/dashboard.html', { onReady: loadDashboard });
+
+function loadDashboard() {
+  const user = Auth.user();
+  document.getElementById('welcome-msg').textContent = `Welcome back, ${user.firstName} 👋`;
+  document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  loadStats();
+  loadAccounts();
+  loadRecentTrades();
+}
+
+async function loadStats() {
+  try {
+    const s = await Api.get('/user/dashboard-stats');
+    const todayColor = (s.todayPnL||0) >= 0 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('stats-grid').innerHTML = `
+      <div class="stat-card fade-up"><div class="stat-label">Total Balance</div><div class="stat-value mono" style="color:var(--cyan)">${Fmt.money(s.totalBalance)}</div><div class="stat-sub">${s.totalAccounts||0} account${s.totalAccounts!==1?'s':''}</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Today P&L</div><div class="stat-value mono" style="color:${todayColor}">${s.todayPnL>=0?'+':''}${Fmt.money(s.todayPnL)}</div><div class="stat-sub">${Fmt.pct(s.todayPnLPct||0,3)} today</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Funded Accounts</div><div class="stat-value mono" style="color:var(--gold)">${s.fundedAccounts||0}</div><div class="stat-sub">Live capital</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Challenges Won</div><div class="stat-value mono" style="color:var(--purple)">${s.passedChallenges||0}</div><div class="stat-sub">${s.failedChallenges||0} failed</div></div>
+    `;
+  } catch { document.getElementById('stats-grid').innerHTML = '<div class="alert alert-error">Failed to load stats</div>'; }
+}
+
+async function loadAccounts() {
+  try {
+    const accounts = await Api.get('/accounts');
+    if (!accounts.length) {
+      document.getElementById('accounts-grid').innerHTML = `
+        <div class="card"><div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No Accounts Yet</div><div class="empty-desc">Start your prop trading journey. Pass a challenge and get funded.</div><a href="challenges.html" style="text-decoration:none;display:inline-block;margin-top:20px"><button class="btn btn-primary">Browse Challenges</button></a></div></div>`;
+      return;
+    }
+    document.getElementById('accounts-grid').innerHTML = `<div class="grid-auto-lg">${accounts.map(accountCard).join('')}</div>`;
+  } catch { document.getElementById('accounts-grid').innerHTML = '<div class="alert alert-error">Failed to load accounts</div>'; }
+}
+
+function accountCard(a) {
+  const ch = a.challenge;
+  const profitPct = ((a.balance - a.startBalance) / a.startBalance) * 100;
+  const drawdownPct = a.peakBalance > 0 ? ((a.peakBalance - a.balance) / a.peakBalance) * 100 : 0;
+  const profitTarget = a.phase === 'CHALLENGE_2' ? ch.profitTarget2 : ch.profitTarget1;
+  const profitProg = profitTarget ? Math.min((profitPct / profitTarget) * 100, 100) : 0;
+  const ddProg = Math.min((drawdownPct / ch.maxTotalDrawdown) * 100, 100);
+  const ddClass = ddProg > 70 ? 'prog-red' : ddProg > 45 ? 'prog-gold' : 'prog-green';
+  const phaseLabels = { CHALLENGE_1:'Phase 1', CHALLENGE_2:'Phase 2', FUNDED:'Funded' };
+  const phaseColors = { CHALLENGE_1:'var(--cyan)', CHALLENGE_2:'var(--purple)', FUNDED:'var(--gold)' };
+  const actionBtn = a.status === 'ACTIVE'
+    ? `<a href="trading.html?account=${a.id}" style="text-decoration:none"><button class="btn btn-primary btn-sm">Trade →</button></a>`
+    : a.phase === 'FUNDED' && a.status !== 'FAILED'
+    ? `<a href="payouts.html" style="text-decoration:none"><button class="btn btn-gold btn-sm">Payout →</button></a>` : '';
+
+  return `<div class="card" style="padding:20px">
+    <div class="flex-between mb-12">
+      <div>
+        <div class="mono text-faint" style="font-size:11px;margin-bottom:3px">#${a.accountNumber}</div>
+        <div style="font-size:18px;font-weight:600">${Fmt.money(ch.accountSize,0)}</div>
+      </div>
+      <div style="text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end">
+        ${statusBadge(a.status)}
+        <span style="font-size:11px;color:${phaseColors[a.phase]||'var(--cyan)'};font-weight:600">${phaseLabels[a.phase]||''}</span>
+      </div>
+    </div>
+    <div class="grid-2 mb-12" style="gap:8px">
+      <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:9px 11px">
+        <div style="font-size:10px;color:var(--fg3);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Balance</div>
+        <div class="mono" style="font-size:14px;font-weight:500">${Fmt.money(a.balance)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:9px 11px">
+        <div style="font-size:10px;color:var(--fg3);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">P&L</div>
+        <div class="mono ${pnlClass(profitPct)}" style="font-size:14px;font-weight:500">${pnlSign(profitPct)}${profitPct.toFixed(2)}%</div>
+      </div>
+    </div>
+    ${profitTarget ? `<div class="mb-10"><div class="flex-between" style="font-size:11px;margin-bottom:5px"><span class="text-faint">Profit Target</span><span class="text-muted">${profitPct.toFixed(2)}% / ${profitTarget}%</span></div><div class="progress"><div class="progress-fill prog-cyan" style="width:${profitProg}%"></div></div></div>` : ''}
+    <div><div class="flex-between" style="font-size:11px;margin-bottom:5px"><span class="text-faint">Drawdown</span><span style="color:${ddProg>70?'var(--red)':'var(--fg2)'}">${drawdownPct.toFixed(2)}% / ${ch.maxTotalDrawdown}%</span></div><div class="progress"><div class="progress-fill ${ddClass}" style="width:${ddProg}%"></div></div></div>
+    <div class="flex-between" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:11px">
+      <span class="text-faint">Day ${a.tradingDays} · Daily DD: ${(a.dailyStartBalance>0?((a.dailyStartBalance-a.balance)/a.dailyStartBalance*100):0).toFixed(2)}%</span>
+      ${actionBtn}
+    </div>
+  </div>`;
+}
+
+async function loadRecentTrades() {
+  try {
+    const { orders } = await Api.get('/trading/orders/history?limit=8');
+    if (!orders.length) {
+      document.getElementById('trades-wrap').innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:28px">📊</div><div class="empty-title" style="font-size:15px">No Trades Yet</div><div class="empty-desc" style="font-size:13px">Open your first position from the trading terminal.</div></div>';
+      return;
+    }
+    document.getElementById('trades-wrap').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Symbol</th><th>Type</th><th>Lots</th><th>Open</th><th>Close</th><th>P&L</th><th>Reason</th><th>Date</th></tr></thead>
+        <tbody>
+          ${orders.map(t => `<tr>
+            <td class="mono" style="font-weight:600;color:var(--fg)">${t.symbol}</td>
+            <td>${statusBadge(t.type)}</td>
+            <td class="mono">${Fmt.lots(t.lots)}</td>
+            <td class="mono">${Fmt.price(t.openPrice,t.symbol)}</td>
+            <td class="mono">${t.closePrice ? Fmt.price(t.closePrice,t.symbol) : '—'}</td>
+            <td class="mono ${pnlClass(t.profit)}" style="font-weight:600">${pnlSign(t.profit||0)}${Fmt.money(t.profit||0)}</td>
+            <td>${statusBadge(t.closeReason||'MANUAL')}</td>
+            <td class="text-faint" style="font-size:12px">${Fmt.date(t.closedAt||t.openedAt)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="padding:10px 14px;border-top:1px solid var(--border);text-align:right">
+        <a href="accounts.html" style="font-size:12px;color:var(--cyan)">View all trades →</a>
+      </div>`;
+  } catch { document.getElementById('trades-wrap').innerHTML = '<div class="alert alert-error m-16">Failed to load trades</div>'; }
+}
+</script>
+</body>
+</html>

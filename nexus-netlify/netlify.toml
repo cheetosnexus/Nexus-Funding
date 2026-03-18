@@ -1,0 +1,79 @@
+# ══════════════════════════════════════════════════════════════
+#  NEXUS FUNDING — Netlify Configuration
+#  Database: Netlify DB (Neon) — auto-provisioned
+#  Backend:  Netlify Functions
+#  Frontend: Static HTML/CSS/JS
+# ══════════════════════════════════════════════════════════════
+
+[build]
+  publish = "."
+  command = "npm install && npx prisma generate"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[functions]
+  directory      = "netlify/functions"
+  node_bundler   = "esbuild"
+  included_files = ["prisma/**", "node_modules/.prisma/**"]
+
+# ── API → Netlify Functions ────────────────────────────────────
+[[redirects]]
+  from   = "/api/*"
+  to     = "/.netlify/functions/api/:splat"
+  status = 200
+
+# ── Page redirects ─────────────────────────────────────────────
+[[redirects]]
+  from = "/"
+  to   = "/pages/login.html"
+  status = 302
+
+[[redirects]]
+  from = "/dashboard"
+  to   = "/pages/dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/login"
+  to   = "/pages/login.html"
+  status = 200
+
+[[redirects]]
+  from = "/register"
+  to   = "/pages/register.html"
+  status = 200
+
+[[redirects]]
+  from = "/trading"
+  to   = "/pages/trading.html"
+  status = 200
+
+[[redirects]]
+  from = "/challenges"
+  to   = "/pages/challenges.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to   = "/admin/index.html"
+  status = 200
+
+# ── Security headers ───────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    Permissions-Policy     = "camera=(), microphone=(), geolocation=()"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"

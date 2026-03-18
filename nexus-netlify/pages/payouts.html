@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payouts — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-wrap" id="main-wrap">
+    <div class="topbar" id="topbar"></div>
+    <div class="page-content">
+
+      <div class="page-header mb-20">
+        <h1 class="page-title">Payouts</h1>
+        <button class="btn btn-primary" id="request-btn" onclick="openRequestModal()" style="display:none">Request Payout</button>
+      </div>
+
+      <div class="grid-4 stagger mb-20" id="payout-stats">
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+        <div class="skeleton" style="height:88px;border-radius:10px"></div>
+      </div>
+
+      <div class="card" id="payout-table" style="overflow:hidden">
+        <div class="skeleton" style="height:200px;border-radius:0"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Request Payout Modal -->
+<div class="modal-overlay" id="payout-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Request Payout</span>
+      <button class="modal-close" onclick="Modal.close('payout-modal')">×</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label class="label">Funded Account</label>
+        <select class="input" id="payout-account"></select>
+      </div>
+      <div>
+        <label class="label">Withdrawal Method</label>
+        <select class="input" id="payout-method">
+          <option value="">Select method</option>
+          <option value="bank">Bank Wire Transfer</option>
+          <option value="crypto">Cryptocurrency (USDT/BTC)</option>
+          <option value="wise">Wise Transfer</option>
+          <option value="paypal">PayPal</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Wallet / Account Details</label>
+        <input class="input" id="payout-wallet" placeholder="Wallet address, IBAN, or account number" />
+      </div>
+      <div class="alert alert-info" style="font-size:13px;line-height:1.7">
+        <div><strong>Payout terms:</strong> Profit split applies per your challenge tier (up to 85%). Minimum $100. Processing: 1–3 business days.</div>
+      </div>
+      <div class="flex gap-10">
+        <button class="btn btn-primary btn-lg" style="flex:1" onclick="submitPayout()">Submit Request</button>
+        <button class="btn btn-ghost btn-lg" style="flex:1" onclick="Modal.close('payout-modal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+let fundedAccounts = [];
+
+initPage('/pages/payouts.html', { onReady: loadPayouts });
+
+async function loadPayouts() {
+  try {
+    const [payouts, accounts] = await Promise.all([
+      Api.get('/payouts'),
+      Api.get('/accounts?phase=FUNDED'),
+    ]);
+    fundedAccounts = accounts;
+    if (fundedAccounts.length > 0) {
+      document.getElementById('request-btn').style.display = '';
+      const sel = document.getElementById('payout-account');
+      sel.innerHTML = '<option value="">Select account</option>' +
+        fundedAccounts.map(a => {
+          const profit = a.balance - a.startBalance;
+          return `<option value="${a.id}">#${a.accountNumber} — Profit: ${Fmt.money(profit)}</option>`;
+        }).join('');
+    }
+
+    const totalPaid = payouts.filter(p => p.status==='COMPLETED').reduce((s,p) => s+p.amount, 0);
+    const pending   = payouts.filter(p => ['PENDING','APPROVED','PROCESSING'].includes(p.status)).reduce((s,p) => s+p.amount, 0);
+
+    document.getElementById('payout-stats').innerHTML = `
+      <div class="stat-card fade-up"><div class="stat-label">Total Withdrawn</div><div class="stat-value mono" style="color:var(--green)">${Fmt.money(totalPaid)}</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Pending</div><div class="stat-value mono" style="color:var(--gold)">${Fmt.money(pending)}</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Requests</div><div class="stat-value mono" style="color:var(--cyan)">${payouts.length}</div></div>
+      <div class="stat-card fade-up"><div class="stat-label">Profit Split</div><div class="stat-value mono" style="color:var(--purple)">Up to 85%</div></div>
+    `;
+
+    if (!payouts.length) {
+      document.getElementById('payout-table').innerHTML = `<div class="empty-state"><div class="empty-icon">💰</div><div class="empty-title">No Payouts Yet</div><div class="empty-desc">${fundedAccounts.length > 0 ? 'Request your first payout above.' : 'You need a funded account to request payouts.'}</div></div>`;
+      return;
+    }
+
+    document.getElementById('payout-table').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Date</th><th>Account</th><th>Gross</th><th>Your Share</th><th>Method</th><th>Status</th><th>Note</th></tr></thead>
+        <tbody>
+          ${payouts.map(p => `<tr>
+            <td class="text-faint" style="font-size:12px">${Fmt.date(p.requestedAt)}</td>
+            <td class="mono" style="font-size:12px">#${p.account?.accountNumber||'—'}</td>
+            <td class="mono">${Fmt.money(p.grossAmount)}</td>
+            <td class="mono pnl-pos" style="font-size:14px">${Fmt.money(p.amount)}</td>
+            <td style="font-size:13px;text-transform:capitalize">${p.method}</td>
+            <td>${statusBadge(p.status)}</td>
+            <td class="text-faint" style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.adminNote||(p.status==='PENDING'?'Under review':'—')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (err) {
+    document.getElementById('payout-table').innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load payouts: ${err.message}</div>`;
+  }
+}
+
+function openRequestModal() { Modal.open('payout-modal'); }
+
+async function submitPayout() {
+  const accountId = document.getElementById('payout-account').value;
+  const method    = document.getElementById('payout-method').value;
+  const walletAddress = document.getElementById('payout-wallet').value;
+  if (!accountId) { Toast.error('Select a funded account'); return; }
+  if (!method)    { Toast.error('Select a withdrawal method'); return; }
+  try {
+    await Api.post('/payouts', { accountId, method, walletAddress: walletAddress||undefined });
+    Toast.success('Payout request submitted!');
+    Modal.close('payout-modal');
+    loadPayouts();
+  } catch (err) { Toast.error(err.message || 'Request failed'); }
+}
+</script>
+</body>
+</html>

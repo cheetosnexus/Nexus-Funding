@@ -1,0 +1,151 @@
+╔══════════════════════════════════════════════════════════════════╗
+║   NEXUS FUNDING — Deploy Guide                                  ║
+║   100% Netlify  ·  Neon DB built-in  ·  No separate server     ║
+╚══════════════════════════════════════════════════════════════════╝
+
+ARCHITECTURE
+────────────
+  Frontend  → Static HTML/CSS/JS (Netlify CDN)
+  Backend   → Netlify Functions  (serverless)
+  Database  → Netlify DB / Neon  (PostgreSQL, built-in)
+
+  You do NOT need Railway or any other server.
+  Migrations + seeding run automatically on the first API call.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 1 — Push to GitHub
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Create a new repo on github.com (name: nexus-funding)
+  2. Upload ALL files from this folder to the repo
+     (drag & drop on GitHub, or use git)
+  3. Do NOT commit any .env file
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 2 — Create Netlify Site
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Go to https://netlify.com → Log in
+  2. Click "Add new site" → "Import an existing project"
+  3. Connect GitHub → select nexus-funding
+  4. Build settings (netlify.toml handles this automatically):
+       Build command:     npm install && npx prisma generate
+       Publish directory: .
+       Node version:      20
+  5. Click "Deploy site"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 3 — Add Neon Database
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  In your Netlify project:
+  1. Click "Extensions" in the left sidebar
+  2. Find "Neon" — click "Install" or "Connect"
+  3. Click "Add Database"
+  4. Netlify auto-creates a Neon Postgres database and adds
+     DATABASE_URL to your environment variables — no manual setup
+  5. Click "Claim Database" — links it to your free Neon account
+     (required to keep the database beyond 7 days)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 4 — Add Environment Variables
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Site Settings → Environment Variables → Add a variable:
+
+  ┌──────────────────────────────────────────────────────────────
+  │ JWT_SECRET           = (64 random chars — see below)
+  │ JWT_REFRESH_SECRET   = (64 random chars — different one)
+  │ ADMIN_EMAIL          = admin@yourdomain.com
+  │ ADMIN_PASSWORD       = YourStrongPassword1
+  │ STRIPE_SECRET_KEY    = sk_live_...
+  │ STRIPE_WEBHOOK_SECRET = whsec_...
+  └──────────────────────────────────────────────────────────────
+
+  Generate JWT secrets (run this in any terminal):
+    node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+  Run it TWICE — one for each secret.
+
+  NOTE: Do NOT manually add DATABASE_URL — Netlify DB adds it for you.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 5 — Redeploy
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  After adding the database and env vars:
+  Deploys → "Trigger deploy" → "Deploy site"
+
+  The build only runs:
+    npm install && npx prisma generate
+
+  (Migrations and seeding happen automatically on the
+   first API call — no database needed at build time)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 6 — First Visit (triggers setup)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Visit your site: https://your-site.netlify.app
+  
+  The FIRST API call (e.g. loading the login page calls /api)
+  will automatically:
+    1. Run prisma migrate deploy  → creates all tables in Neon
+    2. Seed the database          → adds challenges + admin user
+
+  This takes ~5-10 seconds on first load. After that, instant.
+
+  Admin login:
+    https://your-site.netlify.app/admin
+    Email:    (your ADMIN_EMAIL)
+    Password: (your ADMIN_PASSWORD)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 7 — Stripe Webhooks
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. dashboard.stripe.com → Webhooks → Add endpoint
+  2. URL: https://your-site.netlify.app/api/payments/webhook
+  3. Events: checkout.session.completed
+             payment_intent.payment_failed
+             charge.refunded
+  4. Copy the Signing secret → set as STRIPE_WEBHOOK_SECRET
+     in Netlify env vars → Trigger deploy again
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Build fails with "prisma migrate" error
+  → Make sure build command is ONLY: npm install && npx prisma generate
+  → In Netlify: Site settings → Build & deploy → Build command
+  → Change it to: npm install && npx prisma generate
+
+  "Cannot find module @prisma/client"
+  → Make sure you Trigger Deploy after adding the database
+
+  Login says invalid credentials
+  → First visit the site to trigger the auto-seed
+  → Check ADMIN_EMAIL and ADMIN_PASSWORD are set in Netlify env vars
+
+  Database tables don't exist
+  → Visit https://your-site.netlify.app/api/health
+  → This triggers bootstrap (migrate + seed)
+  → Wait 10 seconds then try logging in
+
+  Function timeout (first load slow)
+  → Normal — first cold start runs migrations (~5-10s)
+  → Subsequent requests are fast
+  → Netlify free tier has 10s function timeout
+  → Upgrade to Netlify Pro for 26s timeout if needed
+
+  CORS error
+  → The API function already allows all origins
+  → Hard refresh browser (Ctrl+Shift+R)

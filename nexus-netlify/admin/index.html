@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="admin-sidebar" id="admin-sidebar"></aside>
+  <div class="main-wrap" id="main-wrap" style="margin-left:220px">
+    <div class="topbar" style="background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;gap:12px">
+      <span style="font-size:13px;color:var(--fg2)">Admin</span>
+      <div style="flex:1"></div>
+      <a href="../pages/dashboard.html" style="text-decoration:none"><button class="btn btn-ghost btn-sm">← Back to App</button></a>
+    </div>
+    <div class="page-content" id="admin-content">
+      <div class="text-center" style="padding:80px;color:var(--fg2)">Loading admin panel...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Challenge Modal -->
+<div class="modal-overlay" id="edit-challenge-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Edit Challenge</span><button class="modal-close" onclick="Modal.close('edit-challenge-modal')">×</button></div>
+    <form id="edit-challenge-form" style="display:flex;flex-direction:column;gap:12px"></form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+let currentTab = 'overview';
+initAdminPage('overview');
+loadAdminTab('overview');
+
+function loadAdminTab(tab) {
+  currentTab = tab;
+  // Update active state
+  document.querySelectorAll('[id^="admin-tab-"]').forEach(b => b.classList.remove('active'));
+  const tabBtn = document.getElementById(`admin-tab-${tab}`);
+  if (tabBtn) tabBtn.classList.add('active');
+  const LOADERS = { overview:loadOverview, users:loadUsers, accounts:loadAccounts, trades:loadTrades, payouts:loadPayouts, challenges:loadChallenges, kyc:loadKyc, audit:loadAudit };
+  if (LOADERS[tab]) LOADERS[tab]();
+}
+
+/* ── OVERVIEW ─────────────────────────────────────────────── */
+async function loadOverview() {
+  const c = document.getElementById('admin-content');
+  c.innerHTML = `<h1 class="page-title mb-20 fade-up">Platform Overview</h1><div class="grid-3 stagger mb-20">${Array(6).fill('<div class="skeleton" style="height:88px;border-radius:10px"></div>').join('')}</div><div class="grid-2 mb-20"><div class="card p-20"><div class="section-title">Account Distribution</div><canvas id="pie-chart" height="200"></canvas></div><div class="card p-20"><div class="section-title">Daily Signups (14d)</div><canvas id="bar-chart" height="200"></canvas></div></div>`;
+  try {
+    const d = await Api.get('/admin/analytics');
+    const STATS = [
+      { l:'Total Users',     v:d.users?.total||0,      sub:`${d.users?.active||0} active`,       col:'var(--cyan)' },
+      { l:'Active Accounts', v:d.accounts?.active||0,  sub:`${d.accounts?.total||0} total`,       col:'var(--purple)' },
+      { l:'Funded Traders',  v:d.accounts?.funded||0,  sub:'Live funded accounts',                col:'var(--gold)' },
+      { l:'Total Revenue',   v:`$${(d.revenue?.total||0).toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:`$${(d.revenue?.last30Days||0).toLocaleString('en-US',{maximumFractionDigits:0})} last 30d`, col:'var(--green)' },
+      { l:'Open Trades',     v:d.trades?.open||0,      sub:`${d.trades?.total||0} all time`,      col:'var(--cyan)' },
+      { l:'Pending Payouts', v:d.payouts?.pending||0,  sub:d.payouts?.pending>0?'Needs review':'All clear', col:d.payouts?.pending>0?'var(--red)':'var(--green)' },
+    ];
+    c.querySelector('.grid-3').innerHTML = STATS.map(s => `<div class="stat-card fade-up"><div class="stat-label">${s.l}</div><div class="stat-value mono" style="color:${s.col}">${s.v}</div><div class="stat-sub">${s.sub}</div></div>`).join('');
+
+    // Pie chart
+    new Chart(document.getElementById('pie-chart'), {
+      type:'doughnut',
+      data:{ labels:['Active','Passed','Failed','Funded'], datasets:[{ data:[d.accounts?.active||0,d.accounts?.passed||0,d.accounts?.failed||0,d.accounts?.funded||0], backgroundColor:['#00d4ff','#00e676','#ff3d6b','#ffd600'], borderWidth:0 }] },
+      options:{ plugins:{ legend:{ labels:{ color:'#7a8eb8', font:{ size:12 } } } }, cutout:'65%' }
+    });
+
+    // Bar chart
+    const signups = d.dailySignups?.slice(-14) || [];
+    new Chart(document.getElementById('bar-chart'), {
+      type:'bar',
+      data:{ labels: signups.map(s => s.date?.slice(5) || ''), datasets:[{ data: signups.map(s => s.count||0), backgroundColor:'#00d4ff', borderRadius:4 }] },
+      options:{ plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ color:'#4a5880', font:{size:10} }, grid:{ display:false } }, y:{ ticks:{ color:'#4a5880', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } } } }
+    });
+  } catch (err) { Toast.error('Failed to load analytics'); }
+}
+
+/* ── USERS ───────────────────────────────────────────────── */
+let userPage = 1, userSearch = '';
+async function loadUsers(page=1) {
+  userPage = page;
+  const c = document.getElementById('admin-content');
+  c.innerHTML = `
+    <div class="page-header mb-16 fade-up">
+      <h1 class="page-title">User Management</h1>
+      <input class="input" id="user-search" placeholder="Search email or name..." style="width:260px" oninput="debounce(()=>loadUsers(1),400)()" />
+    </div>
+    <div class="card" style="overflow:hidden" id="users-table"><div class="skeleton" style="height:250px;border-radius:0"></div></div>
+    <div class="flex-between mt-12" id="users-pagination" style="font-size:12px;color:var(--fg3)"></div>`;
+
+  document.getElementById('user-search').addEventListener('input', function() {
+    userSearch = this.value;
+    debounce(() => loadUsers(1), 400)();
+  });
+  await fetchUsers();
+}
+
+async function fetchUsers() {
+  try {
+    const d = await Api.get(`/admin/users?search=${encodeURIComponent(userSearch)}&page=${userPage}&limit=25`);
+    const rows = d.users?.map(u => `<tr>
+      <td><div style="font-weight:600;color:var(--fg);font-size:13px">${u.firstName} ${u.lastName}</div><div class="text-faint" style="font-size:11px">${u.email}</div></td>
+      <td style="font-size:13px">${u.country||'—'}</td>
+      <td>${statusBadge(u.role)}</td>
+      <td>${statusBadge(u.status)}</td>
+      <td class="mono" style="font-size:13px">${u._count?.tradingAccounts||0}</td>
+      <td style="font-size:13px">${u.emailVerified?'<span style="color:var(--green)">✓</span>':'<span style="color:var(--red)">✗</span>'}</td>
+      <td class="text-faint" style="font-size:12px">${Fmt.date(u.createdAt)}</td>
+      <td>
+        <div class="flex gap-5">
+          ${u.status!=='BANNED'?`<button onclick="updateUser('${u.id}',{status:'BANNED'})" class="btn btn-danger btn-sm">Ban</button>`:`<button onclick="updateUser('${u.id}',{status:'ACTIVE'})" class="btn btn-success btn-sm">Unban</button>`}
+          ${!u.emailVerified?`<button onclick="updateUser('${u.id}',{emailVerified:true,status:'ACTIVE'})" class="btn btn-success btn-sm">Verify</button>`:''}
+        </div>
+      </td>
+    </tr>`).join('');
+    document.getElementById('users-table').innerHTML = `<table class="data-table"><thead><tr><th>User</th><th>Country</th><th>Role</th><th>Status</th><th>Accounts</th><th>Verified</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${rows||''}</tbody></table>`;
+    document.getElementById('users-pagination').innerHTML = `<span>${d.total||0} users</span><div class="flex gap-8 items-center"><button onclick="loadUsers(${userPage-1})" ${userPage<=1?'disabled':''} class="btn btn-ghost btn-sm">← Prev</button><span>Page ${userPage} / ${d.pages||1}</span><button onclick="loadUsers(${userPage+1})" ${userPage>=(d.pages||1)?'disabled':''} class="btn btn-ghost btn-sm">Next →</button></div>`;
+  } catch { document.getElementById('users-table').innerHTML = '<div class="alert alert-error m-16">Failed to load users</div>'; }
+}
+
+async function updateUser(id, data) {
+  try { await Api.patch(`/admin/users/${id}`, data); Toast.success('User updated'); fetchUsers(); }
+  catch (err) { Toast.error(err.message || 'Update failed'); }
+}
+
+/* ── ACCOUNTS ────────────────────────────────────────────── */
+let acctPage=1, acctStatus='';
+async function loadAccounts(page=1) {
+  acctPage=page;
+  const c=document.getElementById('admin-content');
+  c.innerHTML=`<div class="page-header mb-16 fade-up"><h1 class="page-title">Account Control</h1><div class="filter-bar" id="acct-filters">${['','ACTIVE','FAILED','PASSED','SUSPENDED'].map(s=>`<button class="filter-pill ${acctStatus===s?'active':''}" onclick="setAcctFilter('${s}')">${s||'ALL'}</button>`).join('')}</div></div><div class="card" style="overflow:hidden" id="accts-table"><div class="skeleton" style="height:250px;border-radius:0"></div></div><div class="flex-between mt-12" id="accts-pagination" style="font-size:12px;color:var(--fg3)"></div>`;
+  await fetchAccounts();
+}
+function setAcctFilter(s){acctStatus=s;loadAccounts(1);}
+
+async function fetchAccounts() {
+  try {
+    const d=await Api.get(`/admin/accounts?status=${acctStatus}&page=${acctPage}`);
+    const rows=d.accounts?.map(a=>`<tr>
+      <td class="mono" style="font-size:12px;color:var(--cyan)">#${a.accountNumber}</td>
+      <td><div style="font-weight:600;color:var(--fg);font-size:13px">${a.user?.firstName} ${a.user?.lastName}</div><div class="text-faint" style="font-size:11px">${a.user?.email}</div></td>
+      <td style="font-size:12px">${a.challenge?.name}</td>
+      <td class="mono" style="font-weight:600;font-size:13px">${Fmt.money(a.balance)}</td>
+      <td>${statusBadge(a.phase?.replace('_',' '))}</td>
+      <td>${statusBadge(a.status)}</td>
+      <td class="mono" style="font-size:13px">${a._count?.orders||0}</td>
+      <td><div class="flex gap-5">
+        <button onclick="resetAccount('${a.id}','${a.accountNumber}')" style="padding:4px 9px;border-radius:6px;font-size:11px;background:rgba(255,214,0,0.1);color:var(--gold);border:1px solid rgba(255,214,0,0.25);cursor:pointer;font-family:var(--sans)">Reset</button>
+        ${a.status==='ACTIVE'?`<button onclick="adminUpdateAccount('${a.id}',{status:'SUSPENDED'})" class="btn btn-danger btn-sm">Suspend</button>`:''}
+        ${a.status==='SUSPENDED'?`<button onclick="adminUpdateAccount('${a.id}',{status:'ACTIVE'})" class="btn btn-success btn-sm">Restore</button>`:''}
+      </div></td>
+    </tr>`).join('');
+    document.getElementById('accts-table').innerHTML=`<table class="data-table"><thead><tr><th>Account</th><th>Trader</th><th>Challenge</th><th>Balance</th><th>Phase</th><th>Status</th><th>Trades</th><th>Actions</th></tr></thead><tbody>${rows||''}</tbody></table>`;
+    document.getElementById('accts-pagination').innerHTML=`<span>${d.total||0} accounts</span><div class="flex gap-8"><button onclick="loadAccounts(${acctPage-1})" ${acctPage<=1?'disabled':''} class="btn btn-ghost btn-sm">← Prev</button><span>Page ${acctPage}/${d.pages||1}</span><button onclick="loadAccounts(${acctPage+1})" ${acctPage>=(d.pages||1)?'disabled':''} class="btn btn-ghost btn-sm">Next →</button></div>`;
+  } catch { document.getElementById('accts-table').innerHTML='<div class="alert alert-error m-16">Failed</div>'; }
+}
+async function resetAccount(id,num){if(!confirm(`Reset account #${num}? This closes all open orders and resets the balance.`))return;try{await Api.post(`/admin/accounts/${id}/reset`);Toast.success('Account reset');fetchAccounts();}catch(e){Toast.error(e.message||'Failed');}}
+async function adminUpdateAccount(id,data){try{await Api.patch(`/admin/accounts/${id}`,data);Toast.success('Updated');fetchAccounts();}catch(e){Toast.error(e.message||'Failed');}}
+
+/* ── TRADES ──────────────────────────────────────────────── */
+let tradePage=1,tradeFlag=false;
+async function loadTrades(page=1){
+  tradePage=page;
+  const c=document.getElementById('admin-content');
+  c.innerHTML=`<div class="page-header mb-16 fade-up"><h1 class="page-title">All Trades</h1><button onclick="tradeFlag=!tradeFlag;loadTrades(1)" style="padding:6px 16px;border-radius:8px;font-size:12px;cursor:pointer;border:none;font-family:var(--sans);background:${tradeFlag?'rgba(255,61,107,0.15)':'rgba(255,255,255,0.04)'};color:${tradeFlag?'var(--red)':'var(--fg2)'}">🚩 Flagged Only</button></div><div class="card" style="overflow:hidden" id="trades-table"><div class="skeleton" style="height:250px;border-radius:0"></div></div><div class="flex-between mt-12" id="trades-pag" style="font-size:12px;color:var(--fg3)"></div>`;
+  try{
+    const d=await Api.get(`/admin/trades?flagged=${tradeFlag}&page=${tradePage}`);
+    const rows=d.trades?.map(t=>`<tr style="${t.flagged?'background:rgba(255,61,107,0.03)':''}">
+      <td><div style="font-size:12px;font-weight:500;color:var(--fg)">${t.user?.firstName} ${t.user?.lastName}</div><div class="text-faint" style="font-size:10px">${t.user?.email}</div></td>
+      <td class="mono text-faint" style="font-size:11px">#${t.account?.accountNumber}</td>
+      <td class="mono" style="font-weight:700;color:var(--fg);font-size:13px">${t.symbol}</td>
+      <td>${statusBadge(t.type)}</td>
+      <td class="mono" style="font-size:12px">${Fmt.lots(t.lots)}</td>
+      <td class="mono" style="font-size:11px">${Fmt.price(t.openPrice,t.symbol)}</td>
+      <td class="mono" style="font-size:11px">${t.closePrice?Fmt.price(t.closePrice,t.symbol):'—'}</td>
+      <td class="mono ${pnlClass(t.profit)}" style="font-weight:600;font-size:13px">${t.profit!=null?pnlSign(t.profit)+'$'+Math.abs(t.profit).toFixed(2):'open'}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td>${t.flagged?`<span title="${t.flagReason||''}" style="color:var(--red);font-size:13px;cursor:help">🚩</span>`:'—'}</td>
+    </tr>`).join('');
+    document.getElementById('trades-table').innerHTML=`<table class="data-table"><thead><tr><th>Trader</th><th>Account</th><th>Symbol</th><th>Side</th><th>Lots</th><th>Open</th><th>Close</th><th>P&L</th><th>Status</th><th>Flag</th></tr></thead><tbody>${rows||''}</tbody></table>`;
+    document.getElementById('trades-pag').innerHTML=`<span>${d.total||0} trades</span><div class="flex gap-8"><button onclick="loadTrades(${tradePage-1})" ${tradePage<=1?'disabled':''} class="btn btn-ghost btn-sm">← Prev</button><span>Page ${tradePage}/${d.pages||1}</span><button onclick="loadTrades(${tradePage+1})" ${tradePage>=(d.pages||1)?'disabled':''} class="btn btn-ghost btn-sm">Next →</button></div>`;
+  }catch{document.getElementById('trades-table').innerHTML='<div class="alert alert-error m-16">Failed</div>';}
+}
+
+/* ── PAYOUTS ─────────────────────────────────────────────── */
+let payoutStatus='PENDING';
+async function loadPayouts(){
+  const c=document.getElementById('admin-content');
+  c.innerHTML=`<div class="page-header mb-16 fade-up"><h1 class="page-title">Payout Management</h1><div class="filter-bar">${['PENDING','APPROVED','REJECTED','COMPLETED'].map(s=>`<button class="filter-pill ${payoutStatus===s?'active':''}" onclick="setPayoutFilter('${s}')">${s}</button>`).join('')}</div></div><div class="card" style="overflow:hidden" id="payouts-table"><div class="skeleton" style="height:250px;border-radius:0"></div></div>`;
+  await fetchPayouts();
+}
+function setPayoutFilter(s){payoutStatus=s;loadPayouts();}
+async function fetchPayouts(){
+  try{
+    const d=await Api.get(`/admin/payouts?status=${payoutStatus}`);
+    if(!d.payouts?.length){document.getElementById('payouts-table').innerHTML=`<div class="empty-state"><div class="empty-icon">💸</div><div class="empty-title">No ${payoutStatus.toLowerCase()} payouts</div></div>`;return;}
+    const rows=d.payouts.map(p=>`<tr>
+      <td><div style="font-weight:600;color:var(--fg);font-size:13px">${p.user?.firstName} ${p.user?.lastName}</div><div class="text-faint" style="font-size:11px">${p.user?.email}</div></td>
+      <td class="mono" style="font-size:12px">#${p.account?.accountNumber}</td>
+      <td><div class="mono pnl-pos" style="font-size:14px;font-weight:700">${Fmt.money(p.amount)}</div><div class="text-faint" style="font-size:11px">gross ${Fmt.money(p.grossAmount)}</div></td>
+      <td style="font-size:12px">${p.splitRatio}%</td>
+      <td style="font-size:13px;text-transform:capitalize">${p.method}</td>
+      <td class="text-faint" style="font-size:12px">${Fmt.date(p.requestedAt)}</td>
+      <td>${statusBadge(p.status)}</td>
+      <td><div class="flex gap-5">
+        ${p.status==='PENDING'?`<button onclick="reviewPayout('${p.id}','APPROVED')" class="btn btn-success btn-sm">Approve</button><button onclick="reviewPayout('${p.id}','REJECTED')" class="btn btn-danger btn-sm">Reject</button>`:''}
+        ${p.status==='APPROVED'?`<button onclick="reviewPayout('${p.id}','COMPLETED')" style="padding:4px 10px;border-radius:6px;font-size:11px;background:rgba(0,212,255,0.1);color:var(--cyan);border:1px solid rgba(0,212,255,0.25);cursor:pointer;font-family:var(--sans)">Mark Paid</button>`:''}
+      </div></td>
+    </tr>`).join('');
+    document.getElementById('payouts-table').innerHTML=`<table class="data-table"><thead><tr><th>Trader</th><th>Account</th><th>Amount</th><th>Split</th><th>Method</th><th>Requested</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }catch{document.getElementById('payouts-table').innerHTML='<div class="alert alert-error m-16">Failed</div>';}
+}
+async function reviewPayout(id,status){const note=status==='REJECTED'?prompt('Rejection reason (optional):'):undefined;try{await Api.patch(`/admin/payouts/${id}`,{status,adminNote:note||undefined});Toast.success('Payout updated');fetchPayouts();}catch(e){Toast.error(e.message||'Failed');}}
+
+/* ── CHALLENGES ──────────────────────────────────────────── */
+async function loadChallenges(){
+  const c=document.getElementById('admin-content');
+  c.innerHTML=`<h1 class="page-title mb-20 fade-up">Challenge Templates</h1><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px" id="challenges-grid"><div class="skeleton" style="height:220px;border-radius:12px"></div><div class="skeleton" style="height:220px;border-radius:12px"></div><div class="skeleton" style="height:220px;border-radius:12px"></div></div>`;
+  try{
+    const templates=await Api.get('/admin/challenge-templates');
+    document.getElementById('challenges-grid').innerHTML=templates.map(t=>`<div class="card p-20">
+      <div class="flex-between mb-10"><div><div style="font-weight:700;font-size:16px">${t.name}</div><div class="text-faint" style="font-size:12px">$${t.accountSize.toLocaleString()} · ${t.phase}-Phase</div></div><div style="text-align:right"><div class="mono" style="font-weight:700;font-size:18px;color:var(--cyan)">$${t.price}</div>${statusBadge(t.isActive?'ACTIVE':'SUSPENDED')}</div></div>
+      <div style="font-size:12px;color:var(--fg2);line-height:2">Target: ${t.profitTarget1}%${t.profitTarget2?`/${t.profitTarget2}%`:''} · Daily: ${t.maxDailyLoss}% · DD: ${t.maxTotalDrawdown}%<br>Split: ${t.profitSplit}% · Min Days: ${t.minTradingDays} · Leverage: 1:${t.leverage}</div>
+      <button onclick="editChallenge(${JSON.stringify(t).replace(/"/g,'&quot;')})" class="btn btn-secondary btn-sm btn-block" style="margin-top:12px">Edit Challenge</button>
+    </div>`).join('');
+  }catch{Toast.error('Failed to load challenges');}
+}
+
+function editChallenge(c) {
+  const fields = [
+    ['name','Name','text'],['price','Price ($)','number'],['profitTarget1','Profit Target 1 (%)','number'],
+    ['profitTarget2','Profit Target 2 (%)','number'],['maxDailyLoss','Max Daily Loss (%)','number'],
+    ['maxTotalDrawdown','Max Drawdown (%)','number'],['minTradingDays','Min Trading Days','number'],
+    ['maxTradingDays','Max Trading Days','number'],['profitSplit','Profit Split (%)','number'],['leverage','Leverage','number'],
+  ];
+  document.getElementById('edit-challenge-form').innerHTML = fields.map(([n,l,t]) =>
+    `<div><label class="label">${l}</label><input name="${n}" type="${t}" class="input" value="${c[n]||''}" step="any" /></div>`
+  ).join('') +
+  `<div class="flex gap-10"><label class="flex gap-6" style="align-items:center;font-size:13px;color:var(--fg2);cursor:pointer"><input type="checkbox" name="isActive" ${c.isActive?'checked':''} style="accent-color:var(--cyan)"> Active</label><label class="flex gap-6" style="align-items:center;font-size:13px;color:var(--fg2);cursor:pointer"><input type="checkbox" name="isPopular" ${c.isPopular?'checked':''} style="accent-color:var(--gold)"> Popular</label></div>
+  <div class="flex gap-10"><button type="button" onclick="saveChallenge('${c.id}')" class="btn btn-primary btn-lg" style="flex:1">Save Changes</button><button type="button" onclick="Modal.close('edit-challenge-modal')" class="btn btn-ghost btn-lg" style="flex:1">Cancel</button></div>`;
+  Modal.open('edit-challenge-modal');
+}
+
+async function saveChallenge(id) {
+  const form = document.getElementById('edit-challenge-form');
+  const data = {};
+  form.querySelectorAll('input[name]').forEach(inp => {
+    if (inp.type==='checkbox') data[inp.name] = inp.checked;
+    else data[inp.name] = inp.value===''?null:isNaN(Number(inp.value))?inp.value:Number(inp.value);
+  });
+  try { await Api.put(`/admin/challenge-templates/${id}`, data); Toast.success('Challenge updated'); Modal.close('edit-challenge-modal'); loadChallenges(); }
+  catch (e) { Toast.error(e.message||'Failed'); }
+}
+
+/* ── KYC ─────────────────────────────────────────────────── */
+let kycStatus='PENDING';
+async function loadKyc(){
+  const c=document.getElementById('admin-content');
+  c.innerHTML=`<div class="page-header mb-16 fade-up"><h1 class="page-title">KYC Documents</h1><div class="filter-bar">${['PENDING','APPROVED','REJECTED'].map(s=>`<button class="filter-pill ${kycStatus===s?'active':''}" onclick="setKycFilter('${s}')">${s}</button>`).join('')}</div></div><div class="card" style="overflow:hidden" id="kyc-table"><div class="skeleton" style="height:200px;border-radius:0"></div></div>`;
+  await fetchKyc();
+}
+function setKycFilter(s){kycStatus=s;loadKyc();}
+async function fetchKyc(){
+  try{
+    const docs=await Api.get(`/admin/kyc?status=${kycStatus}`);
+    if(!docs.length){document.getElementById('kyc-table').innerHTML=`<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">No ${kycStatus.toLowerCase()} documents</div></div>`;return;}
+    document.getElementById('kyc-table').innerHTML=`<table class="data-table"><thead><tr><th>User</th><th>Type</th><th>Submitted</th><th>Status</th><th>File</th><th>Actions</th></tr></thead><tbody>${docs.map(d=>`<tr>
+      <td><div style="font-weight:600;color:var(--fg);font-size:13px">${d.user?.firstName} ${d.user?.lastName}</div><div class="text-faint" style="font-size:11px">${d.user?.email}</div></td>
+      <td style="font-size:13px">${d.type?.replace(/_/g,' ')}</td>
+      <td class="text-faint" style="font-size:12px">${Fmt.date(d.submittedAt)}</td>
+      <td>${statusBadge(d.status)}</td>
+      <td><a href="${d.fileUrl}" target="_blank" style="color:var(--cyan);font-size:12px">View ↗</a></td>
+      <td>${d.status==='PENDING'?`<div class="flex gap-5"><button onclick="reviewKyc('${d.id}','APPROVED')" class="btn btn-success btn-sm">Approve</button><button onclick="reviewKyc('${d.id}','REJECTED')" class="btn btn-danger btn-sm">Reject</button></div>`:'—'}</td>
+    </tr>`).join('')}</tbody></table>`;
+  }catch{document.getElementById('kyc-table').innerHTML='<div class="alert alert-error m-16">Failed</div>';}
+}
+async function reviewKyc(id,status){const note=status==='REJECTED'?prompt('Rejection reason:'):undefined;try{await Api.patch(`/admin/kyc/${id}`,{status,reviewNote:note||undefined});Toast.success('KYC updated');fetchKyc();}catch(e){Toast.error(e.message||'Failed');}}
+
+/* ── AUDIT LOG ───────────────────────────────────────────── */
+let auditPage=1;
+async function loadAudit(page=1){
+  auditPage=page;
+  const c=document.getElementById('admin-content');
+  c.innerHTML=`<h1 class="page-title mb-16 fade-up">Audit Log</h1><div class="card" style="overflow:hidden" id="audit-table"><div class="skeleton" style="height:250px;border-radius:0"></div></div><div class="flex-between mt-12" id="audit-pag" style="font-size:12px;color:var(--fg3)"></div>`;
+  try{
+    const logs=await Api.get(`/admin/audit-logs?page=${page}`);
+    document.getElementById('audit-table').innerHTML=`<table class="data-table"><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>IP</th></tr></thead><tbody>${logs.map(l=>`<tr><td class="text-faint" style="font-size:12px;white-space:nowrap">${Fmt.dateTime(l.createdAt)}</td><td class="mono text-faint" style="font-size:11px">${l.adminId?.slice(0,12)}...</td><td>${statusBadge(l.action)}</td><td class="mono text-faint" style="font-size:11px">${l.targetType}/${l.targetId?.slice(0,10)}...</td><td class="mono text-faint" style="font-size:11px">${l.ipAddress||'—'}</td></tr>`).join('')}</tbody></table>`;
+    document.getElementById('audit-pag').innerHTML=`<span>Page ${auditPage}</span><div class="flex gap-8"><button onclick="loadAudit(${auditPage-1})" ${auditPage<=1?'disabled':''} class="btn btn-ghost btn-sm">← Prev</button><button onclick="loadAudit(${auditPage+1})" ${!logs.length||logs.length<50?'disabled':''} class="btn btn-ghost btn-sm">Next →</button></div>`;
+  }catch{document.getElementById('audit-table').innerHTML='<div class="alert alert-error m-16">Failed to load audit log</div>';}
+}
+</script>
+</body>
+</html>

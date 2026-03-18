@@ -1,0 +1,29 @@
+{
+  "name": "nexus-funding",
+  "version": "1.0.0",
+  "description": "Nexus Funding Prop Trading Platform — 100% Netlify",
+  "type": "module",
+  "scripts": {
+    "build": "prisma generate",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/neon": "^0.1.2",
+    "@neondatabase/serverless": "^0.10.4",
+    "@prisma/client": "^5.14.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.14",
+    "prisma": "^5.14.0",
+    "stripe": "^16.2.0",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.1",
+    "netlify-cli": "^17.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

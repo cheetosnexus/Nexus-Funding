@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Accounts — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-wrap" id="main-wrap">
+    <div class="topbar" id="topbar"></div>
+    <div class="page-content">
+      <div class="page-header mb-20 fade-up">
+        <h1 class="page-title">Accounts & Trade History</h1>
+        <a href="challenges.html" style="text-decoration:none"><button class="btn btn-secondary btn-sm">+ New Challenge</button></a>
+      </div>
+
+      <!-- Account selector -->
+      <div class="card p-16 mb-16 fade-up">
+        <div class="flex" style="gap:12px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1">
+            <label class="label mb-6">Select Account</label>
+            <select class="input" id="account-sel" onchange="onAccountChange()" style="max-width:400px">
+              <option value="">All Accounts</option>
+            </select>
+          </div>
+          <div id="account-summary" style="font-size:12px;color:var(--fg2)"></div>
+        </div>
+      </div>
+
+      <!-- Trade history -->
+      <div class="mb-8 flex-between">
+        <h2 class="section-title" style="margin:0">Trade History</h2>
+        <div class="text-faint" style="font-size:12px" id="trade-count"></div>
+      </div>
+      <div class="card" id="history-wrap" style="overflow:hidden">
+        <div class="skeleton" style="height:240px;border-radius:0"></div>
+      </div>
+      <div class="flex-between mt-12" id="history-pag" style="font-size:12px;color:var(--fg3)"></div>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+let histPage = 1;
+let selectedAccountId = '';
+
+initPage('/pages/accounts.html', { onReady: init });
+
+async function init() {
+  await loadAccountOptions();
+  loadHistory();
+}
+
+async function loadAccountOptions() {
+  try {
+    const accounts = await Api.get('/accounts');
+    const sel = document.getElementById('account-sel');
+    sel.innerHTML = '<option value="">All Accounts</option>' +
+      accounts.map(a => `<option value="${a.id}">#${a.accountNumber} — ${a.phase.replace('_',' ')} — ${statusLabel(a.status)}</option>`).join('');
+  } catch {}
+}
+
+function statusLabel(s) { return s; }
+
+function onAccountChange() {
+  selectedAccountId = document.getElementById('account-sel').value;
+  histPage = 1;
+  loadHistory();
+}
+
+async function loadHistory(page = 1) {
+  histPage = page;
+  const url = `/trading/orders/history?limit=25&page=${page}${selectedAccountId ? `&accountId=${selectedAccountId}` : ''}`;
+  try {
+    const { orders, total, pages } = await Api.get(url);
+    document.getElementById('trade-count').textContent = `${total} total trades`;
+
+    if (!orders.length) {
+      document.getElementById('history-wrap').innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No Trades Found</div><div class="empty-desc">Your closed trades will appear here.</div></div>`;
+      document.getElementById('history-pag').innerHTML = '';
+      return;
+    }
+
+    document.getElementById('history-wrap').innerHTML = `
+      <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Symbol</th><th>Type</th><th>Lots</th><th>Open Price</th><th>Close Price</th><th>SL</th><th>TP</th><th>P&L</th><th>Commission</th><th>Reason</th><th>Opened</th><th>Closed</th></tr></thead>
+        <tbody>${orders.map(t => `<tr>
+          <td class="mono" style="font-weight:700;color:var(--fg)">${t.symbol}</td>
+          <td>${statusBadge(t.type)}</td>
+          <td class="mono">${Fmt.lots(t.lots)}</td>
+          <td class="mono">${Fmt.price(t.openPrice,t.symbol)}</td>
+          <td class="mono">${t.closePrice?Fmt.price(t.closePrice,t.symbol):'—'}</td>
+          <td class="mono" style="color:${t.stopLoss?'var(--red)':'var(--fg3)'}">${t.stopLoss?Fmt.price(t.stopLoss,t.symbol):'—'}</td>
+          <td class="mono" style="color:${t.takeProfit?'var(--green)':'var(--fg3)'}">${t.takeProfit?Fmt.price(t.takeProfit,t.symbol):'—'}</td>
+          <td class="mono ${pnlClass(t.profit)}" style="font-size:14px;font-weight:700">${t.profit!=null?pnlSign(t.profit||0)+Fmt.money(t.profit||0):'—'}</td>
+          <td class="mono text-faint" style="font-size:12px">${Fmt.money(t.commission||0)}</td>
+          <td>${statusBadge(t.closeReason||'MANUAL')}</td>
+          <td class="text-faint" style="font-size:11px">${Fmt.dateTime(t.openedAt)}</td>
+          <td class="text-faint" style="font-size:11px">${t.closedAt?Fmt.dateTime(t.closedAt):'—'}</td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+
+    document.getElementById('history-pag').innerHTML = `
+      <span>${total} trades</span>
+      <div class="flex gap-8">
+        <button onclick="loadHistory(${page-1})" ${page<=1?'disabled':''} class="btn btn-ghost btn-sm">← Prev</button>
+        <span>Page ${page} / ${pages||1}</span>
+        <button onclick="loadHistory(${page+1})" ${page>=(pages||1)?'disabled':''} class="btn btn-ghost btn-sm">Next →</button>
+      </div>`;
+  } catch (err) {
+    document.getElementById('history-wrap').innerHTML = `<div class="alert alert-error m-16">Failed to load trades: ${err.message}</div>`;
+  }
+}
+</script>
+</body>
+</html>

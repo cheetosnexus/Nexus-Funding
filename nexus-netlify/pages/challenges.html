@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Challenges — Nexus Funding</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body style="background:var(--bg)">
+
+<!-- Nav bar (standalone, not dashboard sidebar) -->
+<nav style="height:56px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:12px;position:sticky;top:0;z-index:50">
+  <div class="flex" style="gap:9px;align-items:center">
+    <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--cyan),var(--blue));display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:14px;color:#000">N</div>
+    <span style="font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:1px" class="gradient-text">NEXUS FUNDING</span>
+  </div>
+  <div style="flex:1"></div>
+  <a href="dashboard.html" style="text-decoration:none"><button class="btn btn-ghost btn-sm">Dashboard</button></a>
+</nav>
+
+<div style="max-width:1200px;margin:0 auto;padding:56px 24px 80px">
+  <!-- Header -->
+  <div class="text-center mb-24 fade-up">
+    <div style="font-size:11px;letter-spacing:2.5px;color:var(--cyan);font-weight:600;margin-bottom:12px;text-transform:uppercase">Prop Trading Challenges</div>
+    <h1 style="font-family:var(--display);font-size:44px;font-weight:700;letter-spacing:.5px;margin-bottom:14px;line-height:1.1">
+      Choose Your Path to<br><span class="gradient-text">Funded Capital</span>
+    </h1>
+    <p style="color:var(--fg2);font-size:16px;max-width:520px;margin:0 auto;line-height:1.7">
+      Pass the evaluation. Get a real funded account. Keep up to 85% of all profits.
+    </p>
+  </div>
+
+  <!-- Steps -->
+  <div class="grid-4 stagger mb-48 fade-up" style="animation-delay:100ms">
+    <div class="card p-20 text-center"><div style="font-size:10px;color:var(--cyan);font-weight:700;letter-spacing:1.5px;margin-bottom:8px;text-transform:uppercase">Step 1</div><div style="font-size:26px;margin-bottom:8px">💳</div><div style="font-weight:600;font-size:14px;margin-bottom:6px">Buy Challenge</div><div style="color:var(--fg2);font-size:12px;line-height:1.6">Pay the one-time evaluation fee</div></div>
+    <div class="card p-20 text-center"><div style="font-size:10px;color:var(--cyan);font-weight:700;letter-spacing:1.5px;margin-bottom:8px;text-transform:uppercase">Step 2</div><div style="font-size:26px;margin-bottom:8px">📈</div><div style="font-weight:600;font-size:14px;margin-bottom:6px">Trade & Pass</div><div style="color:var(--fg2);font-size:12px;line-height:1.6">Hit profit targets within the rules</div></div>
+    <div class="card p-20 text-center"><div style="font-size:10px;color:var(--cyan);font-weight:700;letter-spacing:1.5px;margin-bottom:8px;text-transform:uppercase">Step 3</div><div style="font-size:26px;margin-bottom:8px">✅</div><div style="font-weight:600;font-size:14px;margin-bottom:6px">Get Funded</div><div style="color:var(--fg2);font-size:12px;line-height:1.6">Receive a real funded account</div></div>
+    <div class="card p-20 text-center"><div style="font-size:10px;color:var(--cyan);font-weight:700;letter-spacing:1.5px;margin-bottom:8px;text-transform:uppercase">Step 4</div><div style="font-size:26px;margin-bottom:8px">💸</div><div style="font-weight:600;font-size:14px;margin-bottom:6px">Withdraw</div><div style="color:var(--fg2);font-size:12px;line-height:1.6">Keep up to 85% of every dollar earned</div></div>
+  </div>
+
+  <!-- Challenge cards -->
+  <div id="challenges-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px;align-items:start">
+    <div class="skeleton" style="height:560px;border-radius:18px"></div>
+    <div class="skeleton" style="height:560px;border-radius:18px"></div>
+    <div class="skeleton" style="height:560px;border-radius:18px"></div>
+    <div class="skeleton" style="height:560px;border-radius:18px"></div>
+  </div>
+
+  <!-- Trust badges -->
+  <div style="margin-top:60px;padding:28px;border-radius:16px;background:rgba(0,212,255,0.03);border:1px solid var(--border)">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:24px;text-align:center">
+      <div><div style="font-size:26px;margin-bottom:8px">🔐</div><div style="font-weight:600;font-size:13px;margin-bottom:4px">Secure Payments</div><div style="color:var(--fg3);font-size:12px">Powered by Stripe</div></div>
+      <div><div style="font-size:26px;margin-bottom:8px">⚡</div><div style="font-weight:600;font-size:13px;margin-bottom:4px">Instant Activation</div><div style="color:var(--fg3);font-size:12px">Account live immediately</div></div>
+      <div><div style="font-size:26px;margin-bottom:8px">📊</div><div style="font-weight:600;font-size:13px;margin-bottom:4px">Live Market Data</div><div style="color:var(--fg3);font-size:12px">Real-time prices</div></div>
+      <div><div style="font-size:26px;margin-bottom:8px">💯</div><div style="font-weight:600;font-size:13px;margin-bottom:4px">Clear Rules</div><div style="color:var(--fg3);font-size:12px">No hidden conditions</div></div>
+      <div><div style="font-size:26px;margin-bottom:8px">🌍</div><div style="font-weight:600;font-size:13px;margin-bottom:4px">Global Access</div><div style="color:var(--fg3);font-size:12px">50+ countries supported</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/core.js"></script>
+<script>
+// Allow unauthenticated browsing, but buying requires auth
+loadChallenges();
+
+async function loadChallenges() {
+  try {
+    const challenges = await Api.get('/challenges');
+    document.getElementById('challenges-grid').innerHTML = challenges.map(challengeCard).join('');
+  } catch {
+    document.getElementById('challenges-grid').innerHTML = '<div class="alert alert-error">Failed to load challenges. Make sure the API is running.</div>';
+  }
+}
+
+function challengeCard(c) {
+  const rows = [
+    { label:'Profit Target',   val: c.profitTarget2 ? `${c.profitTarget1}% / ${c.profitTarget2}%` : `${c.profitTarget1}%` },
+    { label:'Max Daily Loss',  val: `${c.maxDailyLoss}%` },
+    { label:'Max Drawdown',    val: `${c.maxTotalDrawdown}%` },
+    { label:'Min Trading Days',val: `${c.minTradingDays} days` },
+    { label:'Max Trading Days',val: c.maxTradingDays ? `${c.maxTradingDays} days` : 'Unlimited' },
+    { label:'Profit Split',    val: `${c.profitSplit}% to you`, green: true },
+    { label:'Leverage',        val: `1:${c.leverage}` },
+  ].map(r => `
+    <div class="info-row">
+      <span class="info-key">${r.label}</span>
+      <span class="mono" style="color:${r.green?'var(--green)':'var(--fg)'};font-weight:500">${r.val}</span>
+    </div>`).join('');
+
+  const instruments = c.instruments.map(i => `<span class="badge badge-cyan" style="font-size:10px">${i}</span>`).join('');
+
+  return `
+    <div class="challenge-card ${c.isPopular?'popular':''} fade-up">
+      ${c.isPopular ? '<div class="popular-badge">MOST POPULAR</div>' : ''}
+      <div style="margin-bottom:18px">
+        <div style="font-size:12px;color:var(--fg3);margin-bottom:4px">${c.name}</div>
+        <div style="font-family:var(--display);font-size:40px;font-weight:700;line-height:1;margin-bottom:2px;${c.isPopular?'background:linear-gradient(135deg,var(--cyan),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent':''}">${Fmt.money(c.accountSize,0)}</div>
+        <div style="font-size:12px;color:var(--fg3)">${c.phase}-Phase Evaluation</div>
+      </div>
+      <div style="font-size:30px;font-weight:700;color:var(--cyan);margin-bottom:20px">
+        $${c.price}<span style="font-size:14px;color:var(--fg3);font-weight:400;margin-left:4px">USD</span>
+      </div>
+      <div style="margin-bottom:22px">${rows}</div>
+      <div style="margin-bottom:16px;display:flex;gap:4px;flex-wrap:wrap">${instruments}</div>
+      <button onclick="buyChal('${c.id}')" id="buy-${c.id}" class="btn btn-lg btn-block ${c.isPopular?'btn-primary':'btn-secondary'}">
+        Start Challenge →
+      </button>
+    </div>`;
+}
+
+async function buyChal(id) {
+  if (!Auth.isAuth()) { window.location.href = 'login.html'; return; }
+  const btn = document.getElementById(`buy-${id}`);
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:16px;height:16px"></span> Redirecting...';
+  try {
+    const { url } = await Api.post('/payments/checkout', { challengeTemplateId: id });
+    if (url) window.location.href = url;
+  } catch (err) {
+    Toast.error(err.message || 'Checkout failed');
+    btn.disabled = false;
+    btn.textContent = 'Start Challenge →';
+  }
+}
+</script>
+</body>
+</html>
